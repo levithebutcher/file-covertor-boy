@@ -201,6 +201,8 @@ covertor/
 ## 8. Known Limitations & Future Extensibility
 
 - **Telegram Non-Premium Limit:** 2 GB is a hard protocol limit imposed by Telegram for non-premium accounts. Files larger than 2 GB cannot be uploaded as a single file; the Zipper service handles this by splitting archives into $\le 1.9$ GB parts.
+- **Render Port Binding & Health Check:** The HTTP web server binds to `PORT` (< 50ms) as step 1 in `bot/__main__.py` before remote DB or Telegram client initialization. Any HTTP method (`GET`, `POST`, `HEAD`, `OPTIONS`) on `/`, `/health`, `/ping`, or `/status` returns `200 OK`, preventing external cron pinger timeouts.
+- **Self-Healing Watcher:** `RenderHandoffWatcher` in `bot/core/handoff.py` continuously monitors `bot_client.is_connected` and auto-reconnects Telegram MTProto if disconnected.
 - **Future Public Mode Roadmap:**
   - When expanding from private/whitelisted use to public use:
     1. Add a per-user daily quota counter in MongoDB `users` collection.

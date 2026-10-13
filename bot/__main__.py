@@ -35,8 +35,21 @@ async def main():
     logger.info("   Target Host Mode: %s                            ", mode.upper())
     logger.info("==================================================")
 
-    # Connect to MongoDB Atlas
-    await db_manager.connect()
+    runner = None
+    if mode != "colab":
+        # 1. Immediately bind web server to satisfy Render port check & external cron pingers (< 50ms)
+        try:
+            runner = await start_web_server()
+        except Exception as e:
+            logger.error("Failed to start Render web server: %s", e)
+
+    # 2. Connect to MongoDB Atlas (with timeout guard so app never hangs)
+    try:
+        await asyncio.wait_for(db_manager.connect(), timeout=10.0)
+    except asyncio.TimeoutError:
+        logger.warning("MongoDB Atlas connection timed out after 10s. Continuing with in-memory store...")
+    except Exception as e:
+        logger.error("MongoDB Atlas connection error: %s. Continuing with in-memory store...", e)
 
     if mode == "colab":
         # Google Colab Worker Mode
@@ -44,15 +57,15 @@ async def main():
         await colab_engine.run()
     else:
         # Primary Render Web Service Mode
-        # 1. Start HTTP web server for Render keep-alive and health checks
-        runner = await start_web_server()
-
-        # 2. Start Hydrogram Telegram MTProto client
+        # 3. Start Hydrogram Telegram MTProto client
         logger.info("Starting Telegram MTProto client...")
-        await bot_client.start()
-        logger.info("Telegram client online! Bot is actively listening for updates.")
+        try:
+            await bot_client.start()
+            logger.info("Telegram client online! Bot is actively listening for updates.")
+        except Exception as e:
+            logger.error("Failed to start Telegram client initially: %s", e)
 
-        # 3. Start Handoff Watcher
+        # 4. Start Handoff Watcher (also auto-reconnects bot_client if needed)
         watcher = RenderHandoffWatcher()
         watcher_task = asyncio.create_task(watcher.start())
 
@@ -81,7 +94,8 @@ async def main():
             watcher_task.cancel()
             if bot_client.is_connected:
                 await bot_client.stop()
-            await runner.cleanup()
+            if runner:
+                await runner.cleanup()
             await db_manager.close()
             logger.info("Shutdown complete.")
 

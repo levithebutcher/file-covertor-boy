@@ -66,14 +66,14 @@ class RenderHandoffWatcher:
                         self.is_client_paused = True
                 else:
                     # Render should be active
-                    if self.is_client_paused or active_host != "render":
-                        logger.info("Colab worker idle or released. Resuming Render Telegram client...")
+                    if self.is_client_paused or active_host != "render" or not bot_client.is_connected:
+                        logger.info("Ensuring Render Telegram client is active...")
                         await acquire_host_lock("render")
                         try:
                             if not bot_client.is_connected:
                                 await bot_client.start()
                         except Exception as e:
-                            logger.error("Error resuming Telegram client on Render: %s", e)
+                            logger.error("Error starting/resuming Telegram client on Render: %s", e)
                         self.is_client_paused = False
 
                     # Send Render heartbeat

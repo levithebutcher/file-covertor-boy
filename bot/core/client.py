@@ -37,6 +37,12 @@ class LazyClientProxy:
             )
         return self._client
 
+    @property
+    def is_connected(self) -> bool:
+        if self._client is None:
+            return False
+        return getattr(self._client, "is_connected", False)
+
     def __getattr__(self, name):
         return getattr(self.get_instance(), name)
 

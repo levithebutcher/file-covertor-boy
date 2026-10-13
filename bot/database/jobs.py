@@ -96,8 +96,12 @@ async def get_lock_state() -> Dict[str, Any]:
                 "heartbeat": now,
                 "colab_waiting": False,
             }
-            await db_manager.db.handoff_lock.insert_one(initial)
-            return initial
+            try:
+                await db_manager.db.handoff_lock.insert_one(initial)
+                return initial
+            except Exception:
+                doc = await db_manager.db.handoff_lock.find_one({"_id": LOCK_ID})
+                return doc or initial
         return doc
     else:
         return db_manager._mem_lock
