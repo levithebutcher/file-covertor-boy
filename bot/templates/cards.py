@@ -140,15 +140,22 @@ def large_file_card(file_name: str, file_size: int, threshold_mb: int) -> str:
     )
 
 
-def access_denied_card(user_id: int) -> str:
-    """Polite denial message for unauthorized users."""
+def access_denied_card(user_id: int, user_name: str = "Friend") -> str:
+    """Warm welcome and access request card for unauthorized users."""
     return (
-        "🔒 <b>ACCESS RESTRICTED</b>\n"
+        "╔════════════════════════════════════╗\n"
+        "║     ✨ NEXUS MEDIA SUITE | v1.0    ║\n"
+        "╚════════════════════════════════════╝\n"
+        f"👋 <b>Welcome, {user_name}!</b>\n\n"
+        "I am your automated personal media assistant:\n"
+        "• 🎬 <b>Video Converter:</b> Convert MKV/AVI/WEBM to MP4\n"
+        "• 📦 <b>Unzipper:</b> Extract Zip/RAR/7z archives\n"
+        "• 🗜️ <b>Zipper:</b> Bundle multiple files into .zip archives\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "This bot is currently private and restricted to the bot owner "
-        "and authorized whitelisted users.\n\n"
-        f"Your Telegram ID: <code>{user_id}</code>\n\n"
-        "<i>Please contact the bot administrator to request access.</i>"
+        "🔒 <b>Access Status:</b> Private (Owner & Whitelist Only)\n"
+        f"🆔 <b>Your Telegram ID:</b> <code>{user_id}</code>\n\n"
+        "<i>To activate access, share your ID with the bot administrator to run:</i>\n"
+        f"<code>/adduser {user_id}</code>"
     )
 
 

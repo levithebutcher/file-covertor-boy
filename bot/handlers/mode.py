@@ -13,11 +13,11 @@ from bot.templates.buttons import mode_keyboard
 @Client.on_message(filters.command("start") & filters.private)
 async def handle_start(client: Client, message: Message):
     user_id = message.from_user.id
+    user_name = message.from_user.first_name or "Friend"
     if not await is_whitelisted(user_id):
-        await message.reply_text(access_denied_card(user_id))
+        await message.reply_text(access_denied_card(user_id, user_name))
         return
 
-    user_name = message.from_user.first_name or "User"
     current_mode = await get_user_mode(user_id)
 
     await message.reply_text(
@@ -29,8 +29,9 @@ async def handle_start(client: Client, message: Message):
 @Client.on_message(filters.command("mode") & filters.private)
 async def handle_mode(client: Client, message: Message):
     user_id = message.from_user.id
+    user_name = message.from_user.first_name or "Friend"
     if not await is_whitelisted(user_id):
-        await message.reply_text(access_denied_card(user_id))
+        await message.reply_text(access_denied_card(user_id, user_name))
         return
 
     user_name = message.from_user.first_name or "User"
