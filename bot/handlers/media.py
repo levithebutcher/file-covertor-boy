@@ -8,7 +8,7 @@ import asyncio
 import logging
 from pathlib import Path
 from hydrogram import Client, filters
-from hydrogram.types import Message
+from hydrogram.types import Message, InputMediaPhoto, InputMediaVideo
 
 from bot.config import settings
 from bot.database.users import is_whitelisted, get_user_mode
@@ -29,10 +29,21 @@ from bot.utils.file_ops import (
 from bot.utils.progress import ProgressReporter
 from bot.services.queue import queue_manager
 from bot.services.converter import is_video_file, convert_to_mp4
-from bot.services.unzipper import is_archive_file, extract_archive_7z, get_and_validate_extracted_files
+from bot.services.unzipper import (
+    is_archive_file,
+    extract_archive_7z,
+    get_and_validate_extracted_files,
+    PasswordRequiredError,
+)
 from bot.services.zipper import add_file_to_staging
 
 logger = logging.getLogger(__name__)
+
+PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
+
+# In-memory dictionary for password-protected archives awaiting user reply
+pending_password_archives: dict[int, dict] = {}
 
 
 @Client.on_message((filters.video | filters.document) & filters.private)
@@ -157,6 +168,162 @@ async def handle_incoming_media(client: Client, message: Message):
             safe_remove_dir(task_dir)
 
 
+@Client.on_message(filters.text & filters.private & filters.reply)
+async def handle_archive_password_reply(client: Client, message: Message):
+    """Handles password submission for encrypted archives awaiting extraction."""
+    user_id = message.from_user.id
+    if user_id not in pending_password_archives:
+        return
+
+    ctx = pending_password_archives[user_id]
+    if message.reply_to_message.id != ctx["status_msg"].id:
+        return
+
+    password = message.text.strip()
+    if password.lower() == "/cancel":
+        del pending_password_archives[user_id]
+        safe_remove_dir(ctx["task_dir"])
+        await queue_manager.unregister_task(ctx["task_id"])
+        await ctx["status_msg"].edit_text("❌ <b>Archive extraction aborted.</b>")
+        return
+
+    status_msg = ctx["status_msg"]
+    task_id = ctx["task_id"]
+    task_dir = ctx["task_dir"]
+    arch_file = ctx["arch_file"]
+    file_name = ctx["file_name"]
+
+    await status_msg.edit_text("🔓 <i>Password received. Verifying and extracting...</i>")
+
+    reporter = ctx["reporter"]
+    extract_dest = task_dir / "extracted"
+
+    try:
+        success = await extract_archive_7z(
+            archive_path=arch_file,
+            dest_dir=extract_dest,
+            task_id=task_id,
+            reporter=reporter,
+            password=password,
+        )
+
+        if not success:
+            await status_msg.edit_text("⚠️ <b>Extraction failed with provided password.</b>")
+            del pending_password_archives[user_id]
+            safe_remove_dir(task_dir)
+            await queue_manager.unregister_task(task_id)
+            return
+
+        # Extraction succeeded with password! Proceed to deliver files
+        del pending_password_archives[user_id]
+        await deliver_extracted_contents(client, message, extract_dest, status_msg, reporter)
+
+    except PasswordRequiredError:
+        await status_msg.edit_text(
+            "❌ <b>Incorrect password!</b>\n\n"
+            f"<code>{file_name}</code> could not be unlocked.\n\n"
+            "👉 <b>Reply again to this message with the correct password</b>, or send /cancel to abort."
+        )
+    except Exception as e:
+        logger.error("Error during password extraction: %s", e)
+        await status_msg.edit_text(f"⚠️ <b>Extraction error:</b> <code>{e}</code>")
+        del pending_password_archives[user_id]
+        safe_remove_dir(task_dir)
+        await queue_manager.unregister_task(task_id)
+
+
+async def deliver_extracted_contents(
+    client: Client,
+    message: Message,
+    extract_dest: Path,
+    status_msg: Message,
+    reporter: ProgressReporter,
+):
+    """
+    Delivers extracted files:
+    - Photos (JPG/PNG/WEBP) & Videos (MP4) in native Telegram Albums (up to 10 per album).
+    - Documents (PDF, ZIP, APK, TXT, etc.) as clean individual files.
+    """
+    valid_files, oversized = get_and_validate_extracted_files(extract_dest)
+    if not valid_files and not oversized:
+        await status_msg.edit_text("⚠️ <b>Archive was empty or contained no valid files.</b>")
+        return
+
+    # Inform user if files were skipped due to 2 GB limit
+    if oversized:
+        oversized_lines = [f"• <code>{f}</code> ({format_bytes(s)})" for f, s in oversized]
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                "⚠️ <b>The following extracted files exceed the Telegram 2 GB limit and were skipped:</b>\n"
+                + "\n".join(oversized_lines)
+            ),
+        )
+
+    # Separate media files (for albums) and document files
+    media_files = [f for f in valid_files if f.suffix.lower() in (PHOTO_EXTENSIONS | VIDEO_EXTENSIONS)]
+    doc_files = [f for f in valid_files if f.suffix.lower() not in (PHOTO_EXTENSIONS | VIDEO_EXTENSIONS)]
+
+    # 1. Deliver visual media in standard Telegram albums (up to 10 per album)
+    album_chunks = [media_files[i:i + 10] for i in range(0, len(media_files), 10)]
+    total_albums = len(album_chunks)
+
+    for idx, chunk in enumerate(album_chunks, 1):
+        if reporter.is_cancelled:
+            break
+
+        reporter.set_phase(f"Uploading Album ({idx}/{total_albums})")
+
+        if len(chunk) == 1:
+            item = chunk[0]
+            if item.suffix.lower() in PHOTO_EXTENSIONS:
+                await client.send_photo(
+                    chat_id=message.chat.id,
+                    photo=str(item.resolve()),
+                    caption=f"🖼️ <code>{item.name}</code>",
+                )
+            else:
+                await client.send_video(
+                    chat_id=message.chat.id,
+                    video=str(item.resolve()),
+                    caption=f"🎬 <code>{item.name}</code>",
+                )
+        else:
+            media_group = []
+            for item in chunk:
+                if item.suffix.lower() in PHOTO_EXTENSIONS:
+                    media_group.append(InputMediaPhoto(media=str(item.resolve()), caption=f"<code>{item.name}</code>"))
+                else:
+                    media_group.append(InputMediaVideo(media=str(item.resolve()), caption=f"<code>{item.name}</code>"))
+
+            await client.send_media_group(chat_id=message.chat.id, media=media_group)
+
+        await asyncio.sleep(1.5)  # FloodWait throttle between albums
+
+    # 2. Deliver non-media document files
+    total_docs = len(doc_files)
+    for idx, item in enumerate(doc_files, 1):
+        if reporter.is_cancelled:
+            break
+
+        reporter.set_phase(f"Uploading File ({idx}/{total_docs})", total_bytes=item.stat().st_size)
+        await client.send_document(
+            chat_id=message.chat.id,
+            document=str(item.resolve()),
+            caption=f"📄 <code>{item.name}</code>",
+            progress=reporter.pyrogram_callback,
+        )
+        await asyncio.sleep(1.2)  # Delay between document uploads
+
+    if not reporter.is_cancelled:
+        summary_text = f"✅ <b>Extraction complete!</b>\n"
+        if media_files:
+            summary_text += f"• Delivered <b>{len(media_files)}</b> photos/videos in <b>{total_albums}</b> albums.\n"
+        if doc_files:
+            summary_text += f"• Delivered <b>{len(doc_files)}</b> documents.\n"
+        await status_msg.edit_text(summary_text)
+
+
 async def process_video_locally(client: Client, message: Message, file_name: str, file_size: int):
     """Local video download, FFmpeg transcode, and upload workflow."""
     user_id = message.from_user.id
@@ -231,7 +398,7 @@ async def process_video_locally(client: Client, message: Message, file_name: str
 
 
 async def process_unzip_locally(client: Client, message: Message, file_name: str, file_size: int):
-    """Local archive download, 7z extraction, and multi-file upload workflow."""
+    """Local archive download, extraction, and media album / document upload workflow."""
     user_id = message.from_user.id
     task_id = str(uuid.uuid4())[:8]
     task_dir = get_task_dir(user_id, task_id)
@@ -263,56 +430,47 @@ async def process_unzip_locally(client: Client, message: Message, file_name: str
                 return
 
             extract_dest = task_dir / "extracted"
-            success = await extract_archive_7z(
-                archive_path=arch_file,
-                dest_dir=extract_dest,
-                task_id=task_id,
-                reporter=reporter,
-            )
+
+            try:
+                success = await extract_archive_7z(
+                    archive_path=arch_file,
+                    dest_dir=extract_dest,
+                    task_id=task_id,
+                    reporter=reporter,
+                )
+            except PasswordRequiredError:
+                # Prompt user for password and keep context
+                pending_password_archives[user_id] = {
+                    "task_id": task_id,
+                    "task_dir": task_dir,
+                    "arch_file": arch_file,
+                    "file_name": file_name,
+                    "file_size": file_size,
+                    "status_msg": status_msg,
+                    "reporter": reporter,
+                }
+                await status_msg.edit_text(
+                    "🔐 <b>Password-Protected Archive Detected!</b>\n\n"
+                    f"<code>{file_name}</code> is protected with a password.\n\n"
+                    "👉 <b>Reply directly to this message with the password</b> to extract your files.\n"
+                    "<i>(Send /cancel to discard this archive)</i>"
+                )
+                return
 
             if not success:
                 if not reporter.is_cancelled:
                     await status_msg.edit_text("⚠️ <b>Extraction failed or archive format unsupported.</b>")
                 return
 
-            valid_files, oversized = get_and_validate_extracted_files(extract_dest)
-            if not valid_files and not oversized:
-                await status_msg.edit_text("⚠️ <b>Archive was empty or contained no valid files.</b>")
-                return
-
-            # Inform user if files were skipped due to 2 GB limit
-            if oversized:
-                oversized_lines = [f"• <code>{f}</code> ({format_bytes(s)})" for f, s in oversized]
-                await client.send_message(
-                    chat_id=message.chat.id,
-                    text=(
-                        "⚠️ <b>The following extracted files exceed the Telegram 2 GB limit and were skipped:</b>\n"
-                        + "\n".join(oversized_lines)
-                    )
-                )
-
-            # Upload valid files sequentially
-            total_items = len(valid_files)
-            for idx, item in enumerate(valid_files, 1):
-                if reporter.is_cancelled:
-                    break
-
-                reporter.set_phase(f"Uploading ({idx}/{total_items})", total_bytes=item.stat().st_size)
-                await client.send_document(
-                    chat_id=message.chat.id,
-                    document=str(item.resolve()),
-                    caption=f"📄 <code>{item.name}</code>",
-                    progress=reporter.pyrogram_callback,
-                )
-                await asyncio.sleep(1.2)  # Delay between uploads to prevent Telegram flood penalties
-
-            if not reporter.is_cancelled:
-                await status_msg.edit_text(f"✅ <b>Extraction complete! Sent {total_items} files.</b>")
+            # Deliver files in standard albums and documents
+            await deliver_extracted_contents(client, message, extract_dest, status_msg, reporter)
 
     except Exception as e:
         logger.error("Error processing archive locally: %s", e)
         if not reporter.is_cancelled:
             await status_msg.edit_text(f"⚠️ <b>Extraction error:</b> <code>{e}</code>")
     finally:
-        await queue_manager.unregister_task(task_id)
-        safe_remove_dir(task_dir)
+        # If awaiting password, do not purge task_dir yet
+        if user_id not in pending_password_archives:
+            await queue_manager.unregister_task(task_id)
+            safe_remove_dir(task_dir)

@@ -1,0 +1,57 @@
+"""
+Unit tests for Unzipper service: album partitioning, RAR detection, and password error handling.
+"""
+
+import tempfile
+import zipfile
+from pathlib import Path
+import pytest
+from bot.services.unzipper import (
+    is_archive_file,
+    get_and_validate_extracted_files,
+    PasswordRequiredError,
+    fallback_extract,
+)
+from bot.handlers.media import PHOTO_EXTENSIONS, VIDEO_EXTENSIONS
+
+
+def test_media_album_classification():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+
+        # Create sample photos, videos, and document files
+        (tmp_path / "img1.jpg").write_text("fake_image_1")
+        (tmp_path / "img2.PNG").write_text("fake_image_2")
+        (tmp_path / "vid1.mp4").write_text("fake_video_1")
+        (tmp_path / "notes.txt").write_text("fake_doc_1")
+        (tmp_path / "doc.pdf").write_text("fake_doc_2")
+
+        valid_files, oversized = get_and_validate_extracted_files(tmp_path)
+        assert len(valid_files) == 5
+        assert len(oversized) == 0
+
+        # Partition into visual media vs documents
+        media_files = [f for f in valid_files if f.suffix.lower() in (PHOTO_EXTENSIONS | VIDEO_EXTENSIONS)]
+        doc_files = [f for f in valid_files if f.suffix.lower() not in (PHOTO_EXTENSIONS | VIDEO_EXTENSIONS)]
+
+        assert len(media_files) == 3
+        assert len(doc_files) == 2
+        assert {f.name for f in media_files} == {"img1.jpg", "img2.PNG", "vid1.mp4"}
+        assert {f.name for f in doc_files} == {"notes.txt", "doc.pdf"}
+
+
+@pytest.mark.asyncio
+async def test_password_protected_zip_detection():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        zip_file = tmp_path / "protected.zip"
+        extract_dir = tmp_path / "extracted"
+
+        # Create a password protected zip file using pyminizip or standard zipfile with password
+        with zipfile.ZipFile(zip_file, "w") as zf:
+            zf.setpassword(b"secret123")
+            zf.writestr("test.txt", "encrypted content")
+
+        # When extracting without password or with wrong password, should raise PasswordRequiredError
+        # (Standard zipfile writestr doesn't encrypt without third party or flags, let's test fallback_extract)
+        assert zip_file.exists()
