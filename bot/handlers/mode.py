@@ -6,8 +6,9 @@ Provides instant feedback, live checkmark toggles, and direct slash commands.
 from hydrogram import Client, filters
 from hydrogram.types import Message, CallbackQuery
 from bot.database.users import is_whitelisted, get_user_mode, set_user_mode
-from bot.templates.cards import start_card, mode_card, access_denied_card
-from bot.templates.buttons import mode_keyboard
+from bot.services.zipper import get_staging_stats
+from bot.templates.cards import start_card, mode_card, access_denied_card, zipper_staging_card
+from bot.templates.buttons import mode_keyboard, zipper_actions_keyboard
 
 
 @Client.on_message(filters.command("start") & filters.private)
@@ -73,7 +74,19 @@ async def handle_shortcut_zip(client: Client, message: Message):
         return
 
     await set_user_mode(user_id, "zip")
-    await message.reply_text("🗜️ <b>Switched to Zipper Mode!</b>\nSend multiple files to bundle them into a .zip archive.")
+    count, total_staged, latest = get_staging_stats(user_id)
+    if count > 0:
+        await message.reply_text(
+            text=zipper_staging_card(count, total_staged, latest),
+            reply_markup=zipper_actions_keyboard(),
+        )
+    else:
+        await message.reply_text(
+            "🗜️ <b>Switched to Zipper Mode!</b>\n\n"
+            "• Send any files, photos, videos, or documents to add to your zip batch.\n"
+            "• When finished, tap <b>'Create .ZIP Now'</b> or send <code>/finish</code>.\n"
+            "• To clear your batch, send <code>/clear</code>."
+        )
 
 
 @Client.on_callback_query(filters.regex(r"^set_mode:(convert|unzip|zip)$"))

@@ -46,21 +46,31 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
 pending_password_archives: dict[int, dict] = {}
 
 
-@Client.on_message((filters.video | filters.document) & filters.private)
+@Client.on_message((filters.video | filters.document | filters.photo | filters.audio) & filters.private)
 async def handle_incoming_media(client: Client, message: Message):
     user_id = message.from_user.id
     if not await is_whitelisted(user_id):
         await message.reply_text(access_denied_card(user_id))
         return
 
-    # Extract media metadata
-    media = message.video or message.document
+    # Extract media metadata across videos, documents, photos, and audio
+    media = message.video or message.document or message.photo or message.audio
     if not media:
         return
 
-    file_name = getattr(media, "file_name", None) or f"media_{message.id}"
-    file_size = getattr(media, "file_size", 0)
-    mime_type = getattr(media, "mime_type", "")
+    if message.photo:
+        file_name = f"photo_{message.id}.jpg"
+        file_size = message.photo.file_size
+        mime_type = "image/jpeg"
+    elif message.audio:
+        file_name = getattr(message.audio, "file_name", None) or f"audio_{message.id}.mp3"
+        file_size = getattr(message.audio, "file_size", 0)
+        mime_type = getattr(message.audio, "mime_type", "audio/mpeg")
+    else:
+        file_name = getattr(media, "file_name", None) or f"media_{message.id}"
+        file_size = getattr(media, "file_size", 0)
+        mime_type = getattr(media, "mime_type", "")
+
     file_name = sanitize_filename(file_name)
 
     mode = await get_user_mode(user_id)
@@ -144,15 +154,19 @@ async def handle_incoming_media(client: Client, message: Message):
 
         try:
             download_dest = task_dir / file_name
-            await client.download_media(
+            downloaded_res = await client.download_media(
                 message=message,
                 file_name=str(download_dest.resolve()),
                 progress=reporter.pyrogram_callback,
             )
 
+            actual_file = Path(downloaded_res) if downloaded_res else download_dest
+            if not actual_file.exists():
+                raise FileNotFoundError(f"Failed to save staged file: {download_dest}")
+
             count, total_staged, latest = await add_file_to_staging(
                 user_id=user_id,
-                source_file=download_dest,
+                source_file=actual_file,
                 original_filename=file_name,
             )
 

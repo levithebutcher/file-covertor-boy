@@ -60,17 +60,15 @@ async def handle_zip_clear(client: Client, callback: CallbackQuery):
     await callback.message.edit_text("🗑️ <b>Zip batch staging cleared.</b>")
 
 
-@Client.on_callback_query(filters.regex(r"^zip_finish$"))
-async def handle_zip_finish(client: Client, callback: CallbackQuery):
-    user_id = callback.from_user.id
+async def run_zip_package_and_upload(client: Client, chat_id: int, user_id: int, status_msg: Message):
+    """Core executor to compress staged files into a zip package and upload to Telegram."""
     count, total_size, _ = get_staging_stats(user_id)
     if count == 0:
-        await callback.answer("No files in staging! Send files first.", show_alert=True)
+        await status_msg.edit_text("⚠️ <b>No files in staging!</b>\nSend files or photos first while in Zipper mode (/zip).")
         return
 
-    await callback.answer("Building archive...", show_alert=False)
     task_id = str(uuid.uuid4())[:8]
-    status_msg = await callback.message.edit_text("🗜️ <b>Compressing staged files...</b>")
+    await status_msg.edit_text("🗜️ <b>Compressing staged files...</b>")
 
     reporter = ProgressReporter(
         status_message=status_msg,
@@ -99,7 +97,7 @@ async def handle_zip_finish(client: Client, callback: CallbackQuery):
                 reporter.set_phase(f"Uploading{part_label}", total_bytes=arch.stat().st_size)
 
                 await client.send_document(
-                    chat_id=callback.message.chat.id,
+                    chat_id=chat_id,
                     document=str(arch.resolve()),
                     caption=f"🗜️ <b>Archive Ready:</b> <code>{arch.name}</code>{part_label}",
                     progress=reporter.pyrogram_callback,
@@ -115,3 +113,36 @@ async def handle_zip_finish(client: Client, callback: CallbackQuery):
     finally:
         await queue_manager.unregister_task(task_id)
         safe_remove_dir(task_dir)
+
+
+@Client.on_callback_query(filters.regex(r"^zip_finish$"))
+async def handle_zip_finish(client: Client, callback: CallbackQuery):
+    user_id = callback.from_user.id
+    count, _, _ = get_staging_stats(user_id)
+    if count == 0:
+        await callback.answer("No files in staging! Send files first.", show_alert=True)
+        return
+
+    await callback.answer("Building archive...", show_alert=False)
+    await run_zip_package_and_upload(client, callback.message.chat.id, user_id, callback.message)
+
+
+@Client.on_message(filters.command(["finish", "done", "makezip", "createzip"]) & filters.private)
+async def handle_cmd_finish_zip(client: Client, message: Message):
+    """Slash command shortcut to trigger zip bundling without button."""
+    user_id = message.from_user.id
+    count, _, _ = get_staging_stats(user_id)
+    if count == 0:
+        await message.reply_text("⚠️ <b>No files in staging!</b>\nSend some files or photos first in Zipper mode (/zip).")
+        return
+
+    status_msg = await message.reply_text("🗜️ <i>Starting zip archive creation...</i>")
+    await run_zip_package_and_upload(client, message.chat.id, user_id, status_msg)
+
+
+@Client.on_message(filters.command(["clear", "clearzip"]) & filters.private)
+async def handle_cmd_clear_zip(client: Client, message: Message):
+    """Slash command to clear staged zip files."""
+    user_id = message.from_user.id
+    clear_staging(user_id)
+    await message.reply_text("🗑️ <b>Zip batch staging cleared.</b>")
