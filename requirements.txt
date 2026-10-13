@@ -1,0 +1,32 @@
+# ==============================================================================
+# NEXUS MEDIA SUITE - PRODUCTION DEPENDENCIES
+# ==============================================================================
+
+# Telegram MTProto Framework & Crypto
+Hydrogram==0.2.0
+pyaes==1.6.1
+PySocks==1.7.1
+aiosqlite==0.22.1
+
+# Database (Async MongoDB Atlas Client)
+motor==3.7.1
+pymongo==4.18.3
+dnspython==2.9.0
+
+# Configuration & Validation
+pydantic==2.14.1
+pydantic-settings==2.15.0
+python-dotenv==1.2.4
+
+# Web Health Service (Render Free Port Keep-Alive)
+aiohttp==3.14.5
+yarl==1.25.1
+multidict==7.1.0
+
+# Archive Extraction Fallbacks & Media Utilities
+py7zr==1.1.4
+psutil==7.2.2
+
+# Testing Framework
+pytest==9.1.1
+pytest-asyncio==1.4.0
