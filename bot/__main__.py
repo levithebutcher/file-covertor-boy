@@ -1,5 +1,5 @@
 """
-Main application entry point for Nexus Media Suite.
+Main application entry point for Telegram Media Suite.
 Controls execution mode (Render Web Service vs Google Colab Worker).
 """
 
@@ -19,7 +19,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
-logger = logging.getLogger("NexusBot")
+logger = logging.getLogger("MediaConverterBot")
 
 
 async def main():
@@ -31,7 +31,7 @@ async def main():
         mode = "render"
 
     logger.info("==================================================")
-    logger.info("   NEXUS MEDIA SUITE — STARTING BOT ENGINE        ")
+    logger.info("   TELEGRAM MEDIA BOT — STARTING ENGINE           ")
     logger.info("   Target Host Mode: %s                            ", mode.upper())
     logger.info("==================================================")
 

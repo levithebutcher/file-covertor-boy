@@ -1,4 +1,4 @@
-# AGENT HANDOVER MANUAL: NEXUS MEDIA SUITE
+# AGENT HANDOVER MANUAL: TELEGRAM MEDIA SUITE
 
 > **Target Audience:** Any AI coding assistant (Antigravity, Claude, Copilot, ChatGPT) or human DevOps engineer continuing development or maintenance on this codebase.  
 > **Status:** Production-Ready (Core Engine, Converter, Unzipper, Zipper, Render & Colab Handoff fully implemented and tested).  
@@ -8,7 +8,7 @@
 
 ## 1. Project Goal & Overview
 
-Nexus Media Suite is a high-performance, asynchronous Telegram bot built with Python 3.11+ and Hydrogram (MTProto). It provides three core media services up to Telegram's 2 GB non-premium limit:
+Telegram Media Suite is a high-performance, asynchronous Telegram bot built with Python 3.11+ and Hydrogram (MTProto). It provides three core media services up to Telegram's 2 GB non-premium limit:
 
 1. **🎬 Video Converter (Top Priority):** Converts all popular video containers (`.mkv`, `.avi`, `.mov`, `.webm`, `.flv`, `.wmv`, `.ts`, etc.) into streamable, web-optimized `.mp4` (H.264/AAC) using asynchronous FFmpeg subprocesses with real-time stdout progress parsing and instant cancellation.
 2. **📦 Unzipper (Top Priority):** Extracts `.zip`, `.rar`, `.7z`, `.tar`, `.gz`, `.tgz`, `.tar.bz2` archives using `7z` (with Python library fallbacks), enforces zip-slip path traversal protection, detects extracted files exceeding 2 GB with clear user warnings, and uploads valid files sequentially with flood throttling.
@@ -179,7 +179,7 @@ covertor/
 | `OWNER_ID` | Yes | Primary Telegram user ID of the owner | `123456789` |
 | `ADMIN_IDS` | No | Additional comma-separated admin IDs | `12345,67890` |
 | `MONGO_URI` | Yes | MongoDB Atlas connection string | `mongodb+srv://<username>:<password>@cluster0.abcde.mongodb.net/?retryWrites=true` |
-| `MONGO_DB_NAME` | No | Database name (Default: `nexus_media_bot`) | `nexus_media_bot` |
+| `MONGO_DB_NAME` | No | Database name (Default: `media_converter_bot`) | `media_converter_bot` |
 | `HOST_MODE` | No | `render` (default), `colab`, or `auto` | `render` |
 | `BIG_FILE_THRESHOLD_MB` | No | File size limit for Render in MB (Default: 100) | `100` |
 | `PORT` | No | HTTP Port for Render health check (Default: 10000) | `10000` |

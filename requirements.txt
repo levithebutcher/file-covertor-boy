@@ -1,9 +1,10 @@
 # ==============================================================================
-# NEXUS MEDIA SUITE - PRODUCTION DEPENDENCIES
+# PRODUCTION DEPENDENCIES
 # ==============================================================================
 
-# Telegram MTProto Framework & Crypto
+# Telegram MTProto Framework & Crypto Speedups
 Hydrogram==0.2.0
+tgcrypto>=1.2.5; sys_platform != 'win32'
 pyaes==1.6.1
 PySocks==1.7.1
 aiosqlite==0.22.1

@@ -1,6 +1,6 @@
-# ✨ Nexus Media Suite — Production Telegram Bot
+# 🎬 Telegram Media Converter & Archive Suite — Production Bot
 
-> **A premium, high-performance Telegram automation bot built for Video Conversion, Archive Extraction, and Multi-File Archiving.**  
+> **A fast, high-performance Telegram automation bot built for Video Conversion, Archive Extraction, and Multi-File Archiving.**  
 > Optimized for **Render Free Tier (512 MB RAM)** with automated **Google Colab Big-File Handoff** and **MongoDB Atlas** distributed state.
 
 ---

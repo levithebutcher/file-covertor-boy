@@ -26,13 +26,14 @@ class LazyClientProxy:
     def get_instance(self) -> Client:
         if self._client is None:
             self._client = Client(
-                name=str((SESSIONS_DIR / "nexus_bot").resolve()),
+                name=str((SESSIONS_DIR / "bot_session").resolve()),
                 api_id=settings.api_id,
                 api_hash=settings.api_hash,
                 bot_token=settings.bot_token,
                 plugins=dict(root="bot/handlers"),
-                workers=min(4, max(2, settings.max_concurrent_jobs * 2)),
-                sleep_threshold=30,
+                workers=16,
+                max_concurrent_transmissions=4,
+                sleep_threshold=60,
             )
         return self._client
 

@@ -1,5 +1,5 @@
 """
-Configuration management for Nexus Media Suite.
+Configuration management for Telegram Media Bot.
 Safely parses and validates environment variables.
 """
 
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     # Database
     mongo_uri: Optional[str] = Field(default=None, alias="MONGO_URI")
-    mongo_db_name: str = Field(default="nexus_media_bot", alias="MONGO_DB_NAME")
+    mongo_db_name: str = Field(default="media_converter_bot", alias="MONGO_DB_NAME")
 
     # Host & Handoff Settings
     host_mode: str = Field(default="auto", alias="HOST_MODE")  # 'render', 'colab', 'auto'

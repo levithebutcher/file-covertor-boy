@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: nexus-media-suite
+    name: media-converter-suite
     runtime: docker
     plan: free
     region: oregon
@@ -16,7 +16,7 @@ services:
       - key: MAX_CONCURRENT_JOBS
         value: 1
       - key: MONGO_DB_NAME
-        value: nexus_media_bot
+        value: media_converter_bot
       - key: BOT_TOKEN
         sync: false
       - key: API_ID

@@ -32,7 +32,7 @@ async def handle_cancel_task(client: Client, callback: CallbackQuery):
 @Client.on_callback_query(filters.regex(r"^mode_info$"))
 async def handle_mode_info(client: Client, callback: CallbackQuery):
     info_text = (
-        "✨ NEXUS MEDIA SUITE MODES:\n\n"
+        "🤖 BOT MODES:\n\n"
         "1. 🎬 VIDEO CONVERTER:\n"
         "Converts MKV, AVI, WEBM, FLV, TS, etc. to streaming MP4 with live progress.\n\n"
         "2. 📦 UNZIPPER:\n"

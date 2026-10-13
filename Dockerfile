@@ -9,12 +9,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
     PORT=10000
 
-# Install system dependencies: FFmpeg, 7-Zip, archive tools
+# Install system dependencies: FFmpeg, 7-Zip, archive tools, and speedup build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     p7zip-full \
     curl \
     ca-certificates \
+    gcc \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root system user for security compliance

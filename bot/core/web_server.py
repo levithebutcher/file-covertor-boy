@@ -18,7 +18,7 @@ async def health_handler(request: web.Request) -> web.Response:
     uptime = time.time() - start_timestamp
     return web.json_response({
         "status": "healthy",
-        "service": "nexus_media_suite",
+        "service": "media_bot",
         "host_mode": settings.host_mode,
         "database_connected": db_manager.is_connected,
         "uptime_seconds": round(uptime, 2),

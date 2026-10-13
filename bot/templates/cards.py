@@ -41,47 +41,38 @@ def get_progress_bar(percentage: float, length: int = 10) -> str:
 def start_card(user_name: str, user_id: int, mode_name: str, host: str = "Render") -> str:
     """Welcome card displayed on /start."""
     return (
-        "╔════════════════════════════════════╗\n"
-        "║     ✨ NEXUS MEDIA SUITE | v1.0    ║\n"
-        "╚════════════════════════════════════╝\n"
-        f"👤 <b>User:</b> {user_name} (<code>{user_id}</code>)\n"
-        f"🎯 <b>Active Mode:</b> {mode_name}\n"
-        f"☁️ <b>Host Node:</b> 🟢 {host}\n"
+        f"👋 <b>Welcome, {user_name}!</b>\n\n"
+        f"🎯 <b>Current Mode:</b> {mode_name}\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Welcome to your private media automation suite!\n\n"
         "<b>Available Features:</b>\n"
-        "• 🎬 <b>Video Converter:</b> Convert any video to streamable MP4\n"
+        "• 🎬 <b>Video Converter:</b> Convert any video format to MP4\n"
         "• 📦 <b>Unzipper:</b> Extract zip, rar, 7z, tar, gz archives\n"
-        "• 🗜️ <b>Zipper:</b> Bundle multiple files into a single archive\n\n"
-        "<i>Use /mode or the buttons below to switch your active mode anytime.</i>"
+        "• 🗜️ <b>Zipper:</b> Bundle multiple files into one zip\n\n"
+        "<i>Send a file to start processing, or change mode below:</i>"
     )
 
 
 def mode_card(user_name: str, user_id: int, current_mode: str, host: str = "Render") -> str:
-    """Dashboard card displayed on /mode."""
+    """Card displayed on /mode."""
     mode_titles = {
         "convert": "🎬 Video Converter (MP4)",
         "unzip": "📦 Unzipper (Archive Extractor)",
         "zip": "🗜️ Zipper (Multi-File Bundler)",
     }
     mode_desc = {
-        "convert": "Send any video file (MKV, AVI, WEBM, FLV, TS, etc.) to convert to high-quality streaming MP4.",
-        "unzip": "Send any archive (.zip, .rar, .7z, .tar, .gz) to extract and receive all contents sequentially.",
-        "zip": "Send multiple files to bundle them into a single archive. Max 2 GB per part.",
+        "convert": "Send any video file (.mkv, .avi, .webm, .flv, .ts, etc.) to convert to MP4.",
+        "unzip": "Send any archive (.zip, .rar, .7z, .tar, .gz) to extract contents.",
+        "zip": "Send multiple files to bundle them into a .zip archive (Max 2 GB).",
     }
     title = mode_titles.get(current_mode, current_mode.upper())
-    desc = mode_desc.get(current_mode, "Ready to process files.")
+    desc = mode_desc.get(current_mode, "Ready.")
 
     return (
-        "╔════════════════════════════════════╗\n"
-        "║      ⚙️ MODE CONTROL CENTER        ║\n"
-        "╚════════════════════════════════════╝\n"
-        f"👤 <b>User:</b> {user_name} (<code>{user_id}</code>)\n"
+        f"⚙️ <b>Mode Selector</b>\n\n"
         f"🎯 <b>Active Mode:</b> {title}\n"
-        f"☁️ <b>Active Node:</b> 🟢 {host}\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📌 <b>Current Workflow:</b>\n{desc}\n\n"
-        "<i>Select a mode below to switch instantly:</i>"
+        f"📌 <b>Description:</b>\n{desc}\n\n"
+        "<i>Choose your active mode below:</i>"
     )
 
 
@@ -143,18 +134,15 @@ def large_file_card(file_name: str, file_size: int, threshold_mb: int) -> str:
 def access_denied_card(user_id: int, user_name: str = "Friend") -> str:
     """Warm welcome and access request card for unauthorized users."""
     return (
-        "╔════════════════════════════════════╗\n"
-        "║     ✨ NEXUS MEDIA SUITE | v1.0    ║\n"
-        "╚════════════════════════════════════╝\n"
         f"👋 <b>Welcome, {user_name}!</b>\n\n"
-        "I am your automated personal media assistant:\n"
+        "This bot is currently private (Owner & Whitelisted users only).\n\n"
+        "<b>Available Features:</b>\n"
         "• 🎬 <b>Video Converter:</b> Convert MKV/AVI/WEBM to MP4\n"
         "• 📦 <b>Unzipper:</b> Extract Zip/RAR/7z archives\n"
         "• 🗜️ <b>Zipper:</b> Bundle multiple files into .zip archives\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "🔒 <b>Access Status:</b> Private (Owner & Whitelist Only)\n"
         f"🆔 <b>Your Telegram ID:</b> <code>{user_id}</code>\n\n"
-        "<i>To activate access, share your ID with the bot administrator to run:</i>\n"
+        "<i>To use this bot, ask the administrator to whitelist you:</i>\n"
         f"<code>/adduser {user_id}</code>"
     )
 
