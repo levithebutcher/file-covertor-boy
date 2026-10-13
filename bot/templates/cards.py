@@ -92,24 +92,24 @@ def progress_card(
     speed_str = f"{format_bytes(int(speed_bytes_sec))}/s"
     eta_str = format_duration(eta_seconds)
 
-    phase_emojis = {
-        "Downloading": "📥",
-        "Converting": "⚙️",
-        "Extracting": "📦",
-        "Zipping": "🗜️",
-        "Uploading": "📤",
+    phase_configs = {
+        "Downloading": ("📥", "Downloaded", "Download Speed"),
+        "Converting": ("⚙️", "Transcoded", "Encoding Speed"),
+        "Extracting": ("📦", "Extracted", "Extraction Speed"),
+        "Zipping": ("🗜️", "Compressed", "Compression Speed"),
+        "Uploading": ("📤", "Uploaded", "Upload Speed"),
     }
-    emoji = phase_emojis.get(phase, "⚡")
+    emoji, count_label, speed_label = phase_configs.get(phase, ("⚡", "Processed", "Speed"))
 
     return (
         f"<b>{emoji} {phase.upper()}...</b>\n"
         f"<code>{task_name}</code>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"<b>Progress:</b> <code>[{p_bar}]</code> {percentage:.1f}%\n"
-        f"<b>Transferred:</b> <code>{current_str}</code> / <code>{total_str}</code>\n"
-        f"<b>Speed:</b> <code>{speed_str}</code> | <b>ETA:</b> <code>{eta_str}</code>\n"
+        f"<b>{count_label}:</b> <code>{current_str}</code> / <code>{total_str}</code>\n"
+        f"<b>{speed_label}:</b> <code>{speed_str}</code> | <b>ETA:</b> <code>{eta_str}</code>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "<i>Press Cancel below to abort task immediately.</i>"
+        f"<i>Press Cancel below to abort task immediately.</i>"
     )
 
 

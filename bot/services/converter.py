@@ -66,14 +66,15 @@ async def convert_to_mp4(
     thumb_path = input_file.parent / f"{task_id}_thumb.jpg"
     await extract_thumbnail(input_file, thumb_path, seek_seconds=min(2.0, max(0.5, duration / 10.0)))
 
-    # Determine command: Stream copy if already H.264 + AAC, else transcode
+    # Determine command:
+    # 1. Full Stream Copy if both H.264 video and AAC/MP3 audio
+    # 2. Video Stream Copy if H.264 video with other audio format
+    # 3. Blazing Ultrafast Transcode for non-H.264 containers (WMV, AVI, etc.)
     vcodec = metadata.get("vcodec", "")
     acodec = metadata.get("acodec", "")
 
-    can_copy = (vcodec == "h264" and acodec in ("aac", "mp3"))
-
-    if can_copy:
-        logger.info("Streams are already H.264/AAC. Using ultra-fast stream copy for %s", input_file.name)
+    if vcodec == "h264" and acodec in ("aac", "mp3"):
+        logger.info("Streams are already H.264/AAC. Using ultra-fast direct stream copy for %s", input_file.name)
         cmd = [
             "ffmpeg", "-y",
             "-i", str(input_file.resolve()),
@@ -82,14 +83,30 @@ async def convert_to_mp4(
             "-progress", "pipe:1",
             str(output_file.resolve()),
         ]
+    elif vcodec == "h264":
+        logger.info("Video stream is already H.264. Copying video, re-encoding audio for %s", input_file.name)
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(input_file.resolve()),
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-ac", "2",
+            "-movflags", "+faststart",
+            "-progress", "pipe:1",
+            str(output_file.resolve()),
+        ]
     else:
-        logger.info("Transcoding %s (%s/%s) to H.264/AAC MP4", input_file.name, vcodec, acodec)
+        logger.info("Transcoding %s (%s/%s) to H.264/AAC MP4 with ultrafast preset", input_file.name, vcodec, acodec)
         cmd = [
             "ffmpeg", "-y",
             "-i", str(input_file.resolve()),
             "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "23",
+            "-preset", "ultrafast",
+            "-tune", "fastdecode",
+            "-crf", "26",
+            "-threads", "2",
+            "-vf", "scale=-2:'min(720,ih)'",
             "-pix_fmt", "yuv420p",
             "-c:a", "aac",
             "-b:a", "128k",
