@@ -10,23 +10,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=10000
 
 # Install system dependencies: FFmpeg, 7-Zip, RAR tools, and speedup build tools
-RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-        sed -i 's/Components: main/Components: main contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources; \
-    fi && \
-    if [ -f /etc/apt/sources.list ]; then \
-        sed -i 's/main/main contrib non-free non-free-firmware/g' /etc/apt/sources.list; \
-    fi && \
+RUN echo "deb http://deb.debian.org/debian bookworm non-free contrib" > /etc/apt/sources.list.d/non-free.list && \
     apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         p7zip-full \
-        p7zip-rar \
-        unrar \
         libarchive-tools \
         curl \
         ca-certificates \
         gcc \
         python3-dev \
-        && rm -rf /var/lib/apt/lists/*
+    && (apt-get install -y --no-install-recommends unrar || true) \
+    && (apt-get install -y --no-install-recommends p7zip-rar || true) \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root system user for security compliance
 RUN useradd -m -u 1000 -s /bin/bash botuser
