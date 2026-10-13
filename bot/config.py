@@ -1,5 +1,5 @@
 """
-Configuration management for Telegram Media Bot.
+Configuration management for Telegram Media Suite.
 Safely parses and validates environment variables.
 """
 
@@ -24,15 +24,8 @@ class Settings(BaseSettings):
     owner_id: Optional[int] = Field(default=None, alias="OWNER_ID")
     admin_ids_raw: Optional[str] = Field(default=None, alias="ADMIN_IDS")
 
-    # Database
-    mongo_uri: Optional[str] = Field(default=None, alias="MONGO_URI")
-    mongo_db_name: str = Field(default="media_converter_bot", alias="MONGO_DB_NAME")
-
-    # Host & Handoff Settings
-    host_mode: str = Field(default="auto", alias="HOST_MODE")  # 'render', 'colab', 'auto'
-    big_file_threshold_mb: int = Field(default=100, alias="BIG_FILE_THRESHOLD_MB")
+    # Web Server & Concurrency
     port: int = Field(default=10000, alias="PORT")
-    repo_url: Optional[str] = Field(default=None, alias="REPO_URL")
     max_concurrent_jobs: int = Field(default=1, alias="MAX_CONCURRENT_JOBS")
 
     # Computed fields
@@ -56,10 +49,6 @@ class Settings(BaseSettings):
         if admins:
             return admins[0]
         return 0
-
-    @property
-    def big_file_threshold_bytes(self) -> int:
-        return self.big_file_threshold_mb * 1024 * 1024
 
     def is_admin(self, user_id: int) -> bool:
         return user_id in self.admin_ids or user_id == self.primary_owner_id

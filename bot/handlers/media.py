@@ -1,6 +1,6 @@
 """
 Media handler and dispatcher for Video Conversion, Unzipping, and Zipper staging.
-Routes incoming media based on the user's active mode and enforces threshold handoff.
+Routes incoming media based on the user's active mode.
 """
 
 import uuid
@@ -12,10 +12,8 @@ from hydrogram.types import Message, InputMediaPhoto, InputMediaVideo
 
 from bot.config import settings
 from bot.database.users import is_whitelisted, get_user_mode
-from bot.database.jobs import create_pending_job
 from bot.templates.cards import (
     access_denied_card,
-    large_file_card,
     zipper_staging_card,
 )
 from bot.templates.buttons import zipper_actions_keyboard
@@ -87,23 +85,15 @@ async def handle_incoming_media(client: Client, message: Message):
             )
             return
 
-        # Check file size against Render memory/disk threshold
-        if file_size > settings.big_file_threshold_bytes:
-            job_id = await create_pending_job(
-                chat_id=message.chat.id,
-                message_id=message.id,
-                file_id=media.file_id,
-                file_name=file_name,
-                file_size=file_size,
-                mode="convert",
-            )
-            logger.info("Queued large video job %s (%d bytes) for Colab handoff", job_id, file_size)
+        # Check against Telegram 2 GB non-premium protocol limit
+        if file_size > 2097152000:
             await message.reply_text(
-                large_file_card(file_name, file_size, settings.big_file_threshold_mb)
+                "⚠️ <b>File Exceeds Telegram Limit (2 GB):</b>\n"
+                "Telegram does not allow bots to process files larger than 2 GB."
             )
             return
 
-        # Process locally on Render
+        # Process locally
         await process_video_locally(client, message, file_name, file_size)
 
     # ==========================================================================
@@ -118,18 +108,10 @@ async def handle_incoming_media(client: Client, message: Message):
             )
             return
 
-        if file_size > settings.big_file_threshold_bytes:
-            job_id = await create_pending_job(
-                chat_id=message.chat.id,
-                message_id=message.id,
-                file_id=media.file_id,
-                file_name=file_name,
-                file_size=file_size,
-                mode="unzip",
-            )
-            logger.info("Queued large archive job %s (%d bytes) for Colab handoff", job_id, file_size)
+        if file_size > 2097152000:
             await message.reply_text(
-                large_file_card(file_name, file_size, settings.big_file_threshold_mb)
+                "⚠️ <b>Archive Exceeds Telegram Limit (2 GB):</b>\n"
+                "Telegram does not allow bots to process files larger than 2 GB."
             )
             return
 

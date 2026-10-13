@@ -23,9 +23,8 @@ if hasattr(sys.stdout, "reconfigure"):
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from bot.config import settings
-from bot.database.mongo import db_manager
+from bot.database.db import db_manager
 from bot.database.users import is_whitelisted, add_user, remove_user, get_user_mode, set_user_mode
-from bot.database.jobs import acquire_host_lock, heartbeat_host_lock, release_host_lock
 from bot.services.converter import convert_to_mp4, is_video_file
 from bot.services.unzipper import extract_archive_7z, get_and_validate_extracted_files, is_archive_file, TG_MAX_FILE_SIZE
 from bot.services.zipper import add_file_to_staging, get_staging_stats, create_zip_package, clear_staging
@@ -211,12 +210,6 @@ async def run_all_tests():
         assert await get_user_mode(test_uid) == "convert", "Mode should be convert"
         print("  User mode switching tested: convert <-> unzip <-> zip")
 
-        # Distributed lock testing
-        assert await acquire_host_lock("render") is True
-        assert await heartbeat_host_lock("render") is True
-        assert await acquire_host_lock("colab", ttl_seconds=0) is True
-        assert await release_host_lock("colab") is True
-        print("  Distributed host locking tested: render <-> colab")
         results["Database & Mode Switcher"] = "PASSED"
 
         # ======================================================================

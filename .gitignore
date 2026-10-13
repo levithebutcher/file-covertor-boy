@@ -61,3 +61,11 @@ run_colab.ipynb
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Local SQLite Database
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+

@@ -113,21 +113,17 @@ def progress_card(
     )
 
 
-def large_file_card(file_name: str, file_size: int, threshold_mb: int) -> str:
-    """Alert card when file exceeds Render Free memory/disk threshold."""
+def large_file_card(file_name: str, file_size: int, limit_str: str = "2 GB") -> str:
+    """Alert card when file exceeds Telegram's 2 GB limit."""
     size_str = format_bytes(file_size)
     return (
-        "⚠️ <b>LARGE FILE DETECTED — OVERFLOW QUEUE</b>\n"
+        "⚠️ <b>FILE EXCEEDS MAXIMUM TELEGRAM LIMIT</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"📄 <b>File:</b> <code>{file_name}</code>\n"
-        f"📊 <b>Size:</b> <code>{size_str}</code> (Limit: <code>{threshold_mb} MB</code>)\n"
+        f"📊 <b>Size:</b> <code>{size_str}</code> (Max: <code>{limit_str}</code>)\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Due to Render Free tier memory & disk limits (512 MB RAM),\n"
-        "this job has been <b>safely saved</b> for Colab execution.\n\n"
-        "👉 <b>Action Required:</b>\n"
-        "Open your Google Colab notebook and click <b>'Run All'</b>.\n"
-        "The Colab worker will automatically claim this job, process it, "
-        "and send the result directly to your chat!"
+        "Telegram protocol enforces a strict 2 GB limit for non-premium accounts.\n"
+        "Please send files within the 2 GB limit."
     )
 
 

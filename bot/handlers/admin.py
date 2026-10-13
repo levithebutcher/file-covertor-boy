@@ -86,7 +86,7 @@ async def handle_stats(client: Client, message: Message):
         f"👑 <b>Primary Owner:</b> <code>{settings.primary_owner_id}</code>\n"
         f"👥 <b>Whitelisted Users:</b> <code>{len(users)}</code>\n"
         f"⚙️ <b>Active Local Tasks:</b> <code>{active_jobs}</code> / <code>{settings.max_concurrent_jobs}</code>\n"
-        f"📦 <b>Threshold for Colab:</b> <code>{settings.big_file_threshold_mb} MB</code>\n"
-        f"☁️ <b>Host Config:</b> <code>{settings.host_mode}</code>\n"
+        "☁️ <b>Deployment:</b> <code>Render Web Service (Standalone)</code>\n"
+        "💾 <b>Database:</b> <code>Local SQLite Engine (WAL Mode)</code>\n"
     )
     await message.reply_text(stats_msg)

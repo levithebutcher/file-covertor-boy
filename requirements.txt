@@ -1,5 +1,5 @@
 # ==============================================================================
-# PRODUCTION DEPENDENCIES
+# PRODUCTION DEPENDENCIES (Render Standalone)
 # ==============================================================================
 
 # Telegram MTProto Framework & Crypto Speedups
@@ -8,11 +8,6 @@ tgcrypto>=1.2.5; sys_platform != 'win32'
 pyaes==1.6.1
 PySocks==1.7.1
 aiosqlite==0.22.1
-
-# Database (Async MongoDB Atlas Client)
-motor==3.7.1
-pymongo==4.18.3
-dnspython==2.9.0
 
 # Configuration & Validation
 pydantic==2.14.1

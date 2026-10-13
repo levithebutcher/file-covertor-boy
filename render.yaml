@@ -9,14 +9,8 @@ services:
     envVars:
       - key: PORT
         value: 10000
-      - key: HOST_MODE
-        value: render
-      - key: BIG_FILE_THRESHOLD_MB
-        value: 100
       - key: MAX_CONCURRENT_JOBS
         value: 1
-      - key: MONGO_DB_NAME
-        value: media_converter_bot
       - key: BOT_TOKEN
         sync: false
       - key: API_ID
@@ -26,6 +20,4 @@ services:
       - key: OWNER_ID
         sync: false
       - key: ADMIN_IDS
-        sync: false
-      - key: MONGO_URI
         sync: false

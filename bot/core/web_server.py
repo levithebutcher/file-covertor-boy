@@ -1,12 +1,12 @@
 """
 Lightweight asynchronous web server for Render Free port binding and health checks.
+Accepts all HTTP methods (*), returning immediate 200 OK.
 """
 
 import time
 import logging
 from aiohttp import web
 from bot.config import settings
-from bot.database.mongo import db_manager
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +21,7 @@ async def health_handler(request: web.Request) -> web.Response:
 
     return web.json_response({
         "status": "healthy",
-        "service": "media_bot",
-        "host_mode": settings.host_mode,
-        "database_connected": db_manager.is_connected,
+        "service": "telegram_media_suite",
         "telegram_online": tg_online,
         "uptime_seconds": round(uptime, 2),
     })
@@ -44,5 +42,5 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=settings.port)
     await site.start()
-    logger.info("Render health web server listening on http://0.0.0.0:%d/health", settings.port)
+    logger.info("Health check server listening on http://0.0.0.0:%d/health", settings.port)
     return runner

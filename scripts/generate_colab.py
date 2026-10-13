@@ -1,5 +1,5 @@
 """
-Local utility script to generate a PREFILLED, ready-to-run Google Colab notebook
+Local utility script to generate a PREFILLED, standalone Google Colab notebook
 from your local .env file.
 
 The resulting file (run_colab.ipynb) is strictly git-ignored to prevent credential leaks.
@@ -15,7 +15,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 PROJECT_ROOT = Path(__file__).parent.parent
 ENV_FILE = PROJECT_ROOT / ".env"
-TEMPLATE_FILE = PROJECT_ROOT / "colab" / "colab_template.ipynb"
+TEMPLATE_FILE = PROJECT_ROOT / "colab" / "standalone_bot.ipynb"
 OUTPUT_FILE = PROJECT_ROOT / "run_colab.ipynb"
 
 
@@ -34,8 +34,7 @@ def generate_colab_notebook():
     api_id = env_vars.get("API_ID", "")
     api_hash = env_vars.get("API_HASH", "")
     owner_id = env_vars.get("OWNER_ID") or env_vars.get("ADMIN_IDS", "").split(",")[0]
-    mongo_uri = env_vars.get("MONGO_URI", "")
-    repo_url = env_vars.get("REPO_URL", "https://github.com/your-username/your-repo.git")
+    repo_url = "https://github.com/levithebutcher/file-covertor-boy.git"
 
     # Load template
     with open(TEMPLATE_FILE, "r", encoding="utf-8") as f:
@@ -47,18 +46,16 @@ def generate_colab_notebook():
             source_lines = cell.get("source", [])
             new_lines = []
             for line in source_lines:
-                if 'REPO_URL = "YOUR_REPO_URL_HERE"' in line:
+                if 'REPO_URL = "https://github.com/levithebutcher/file-covertor-boy.git"' in line:
                     new_lines.append(f'REPO_URL = "{repo_url}"\n')
-                elif 'os.environ["BOT_TOKEN"] =' in line:
+                elif 'os.environ["BOT_TOKEN"] = "YOUR_BOT_TOKEN_HERE"' in line:
                     new_lines.append(f'os.environ["BOT_TOKEN"] = "{bot_token}"\n')
-                elif 'os.environ["API_ID"] =' in line:
+                elif 'os.environ["API_ID"] = "YOUR_API_ID_HERE"' in line:
                     new_lines.append(f'os.environ["API_ID"] = "{api_id}"\n')
-                elif 'os.environ["API_HASH"] =' in line:
+                elif 'os.environ["API_HASH"] = "YOUR_API_HASH_HERE"' in line:
                     new_lines.append(f'os.environ["API_HASH"] = "{api_hash}"\n')
-                elif 'os.environ["OWNER_ID"] =' in line:
+                elif 'os.environ["OWNER_ID"] = "YOUR_OWNER_ID_HERE"' in line:
                     new_lines.append(f'os.environ["OWNER_ID"] = "{owner_id}"\n')
-                elif 'os.environ["MONGO_URI"] =' in line:
-                    new_lines.append(f'os.environ["MONGO_URI"] = "{mongo_uri}"\n')
                 else:
                     new_lines.append(line)
             cell["source"] = new_lines
@@ -68,15 +65,15 @@ def generate_colab_notebook():
         json.dump(nb_data, f, indent=1)
 
     print("==================================================")
-    print("✅ PREFILLED COLAB NOTEBOOK GENERATED SUCCESSFULLY")
+    print("✅ PREFILLED STANDALONE COLAB NOTEBOOK GENERATED")
     print(f"📁 Saved to: {OUTPUT_FILE.resolve()}")
     print("🔒 Verified: 'run_colab.ipynb' is in .gitignore.")
     print("==================================================")
-    print("\n👉 How to run on Google Colab:")
+    print("\n👉 To run on Google Colab:")
     print("1. Open https://colab.research.google.com")
     print("2. Click 'Upload' and select your local 'run_colab.ipynb'")
     print("3. Click Runtime -> Run All (Ctrl + F9)")
-    print("4. When large files are finished, interrupt/close Colab to let Render resume.\n")
+    print("4. The bot will run directly with full GPU/RAM!\n")
 
 
 if __name__ == "__main__":
