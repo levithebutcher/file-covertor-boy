@@ -13,7 +13,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     p7zip-full \
-    p7zip-rar \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
