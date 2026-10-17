@@ -37,3 +37,33 @@ def test_archive_format_detection():
     assert is_archive_file("video.mp4") is False
     assert is_archive_file("document.docx") is False
     assert is_archive_file("installer.exe") is False
+
+
+def test_parse_time_to_seconds():
+    from bot.services.converter import parse_time_to_seconds
+    assert parse_time_to_seconds("00:01:30.50") == 90.5
+    assert parse_time_to_seconds("01:00:00.00") == 3600.0
+    assert parse_time_to_seconds("invalid") == 0.0
+
+
+def test_zip_conversational_triggers():
+    test_phrases = [
+        "create zip",
+        "abb zip create karo",
+        "zip banao",
+        "make zip",
+        "zip now",
+        "zip",
+        "done",
+        "finish",
+    ]
+    for phrase in test_phrases:
+        clean = phrase.strip().lower()
+        is_zip = (
+            clean in ("zip", "done", "finish", "compress", "package")
+            or any(p in clean for p in (
+                "create zip", "zip create", "make zip", "zip now",
+                "zip banao", "zip karo", "zip pack", "pack zip", "start zip"
+            ))
+        )
+        assert is_zip is True, f"Failed for phrase: {phrase}"

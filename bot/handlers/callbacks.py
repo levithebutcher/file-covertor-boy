@@ -54,10 +54,14 @@ async def handle_close_menu(client: Client, callback: CallbackQuery):
         pass
 
 
+from bot.handlers.media import active_zipper_cards
+
+
 @Client.on_callback_query(filters.regex(r"^zip_clear$"))
 async def handle_zip_clear(client: Client, callback: CallbackQuery):
     user_id = callback.from_user.id
     clear_staging(user_id)
+    active_zipper_cards.pop(user_id, None)
     await callback.answer("Staged files cleared.", show_alert=False)
     await callback.message.edit_text("🗑️ <b>Zip batch staging cleared.</b>")
 
@@ -69,12 +73,21 @@ async def run_zip_package_and_upload(client: Client, chat_id: int, user_id: int,
         await status_msg.edit_text("⚠️ <b>No files in staging!</b>\nSend files or photos first while in Zipper mode (/zip).")
         return
 
+    # Dismiss previous active controller card if it's different from status_msg
+    active_card = active_zipper_cards.pop(user_id, None)
+    if active_card and active_card.id != status_msg.id:
+        try:
+            await active_card.delete()
+        except Exception:
+            pass
+
     task_id = str(uuid.uuid4())[:8]
-    await status_msg.edit_text("🗜️ <b>Compressing staged files...</b>")
+    archive_filename = f"Batch_{count}_files.zip"
+    await status_msg.edit_text(f"🗜️ <b>Compressing {count} staged files into {archive_filename}...</b>")
 
     reporter = ProgressReporter(
         status_message=status_msg,
-        task_name="Creating Archive.zip",
+        task_name=archive_filename,
         task_id=task_id,
         phase="Zipping",
         total_bytes=total_size,
@@ -84,7 +97,13 @@ async def run_zip_package_and_upload(client: Client, chat_id: int, user_id: int,
     task_dir = get_task_dir(user_id, task_id)
     try:
         async with queue_manager.acquire_slot():
-            archives = await create_zip_package(user_id, task_id, task_dir, reporter)
+            archives = await create_zip_package(
+                user_id=user_id,
+                task_id=task_id,
+                output_dir=task_dir,
+                reporter=reporter,
+                base_archive_name=archive_filename,
+            )
 
             if not archives:
                 if reporter.is_cancelled:
@@ -101,13 +120,13 @@ async def run_zip_package_and_upload(client: Client, chat_id: int, user_id: int,
                 await client.send_document(
                     chat_id=chat_id,
                     document=str(arch.resolve()),
-                    caption=f"🗜️ <b>Archive Ready:</b> <code>{arch.name}</code>{part_label}",
+                    caption=f"🗜️ <b>Archive Ready:</b> <code>{arch.name}</code>{part_label}\n📦 Bundled <b>{count} files</b> successfully.",
                     progress=reporter.pyrogram_callback,
                 )
 
             # Clear staging upon success
             clear_staging(user_id)
-            await status_msg.edit_text(f"✅ <b>Successfully packaged and sent {count} files!</b>")
+            await status_msg.edit_text(f"✅ <b>Successfully packaged and uploaded {count} files in one ZIP archive!</b>")
 
     except Exception as e:
         logger.error("Error creating zip batch: %s", e)
@@ -147,4 +166,5 @@ async def handle_cmd_clear_zip(client: Client, message: Message):
     """Slash command to clear staged zip files."""
     user_id = message.from_user.id
     clear_staging(user_id)
+    active_zipper_cards.pop(user_id, None)
     await message.reply_text("🗑️ <b>Zip batch staging cleared.</b>")

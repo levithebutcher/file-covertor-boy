@@ -3,6 +3,8 @@ High-performance FFmpeg video conversion service.
 Converts any popular video format to MP4 with live progress, stream copying, and cancellation.
 """
 
+from __future__ import annotations
+
 import os
 import re
 import asyncio
@@ -61,6 +63,10 @@ async def convert_to_mp4(
     metadata = await get_video_metadata(input_file)
     duration = metadata.get("duration", 0)
     input_size = input_file.stat().st_size
+    vcodec = metadata.get("vcodec", "")
+    acodec = metadata.get("acodec", "")
+    height = metadata.get("height", 720)
+    has_audio = acodec not in ("unknown", "", "none", None)
 
     # Prepare thumbnail in the same directory
     thumb_path = input_file.parent / f"{task_id}_thumb.jpg"
@@ -68,13 +74,10 @@ async def convert_to_mp4(
 
     # Determine command:
     # 1. Full Stream Copy if both H.264 video and AAC/MP3 audio
-    # 2. Video Stream Copy if H.264 video with other audio format
-    # 3. Blazing Ultrafast Transcode for non-H.264 containers (WMV, AVI, etc.)
-    vcodec = metadata.get("vcodec", "")
-    acodec = metadata.get("acodec", "")
-
-    if vcodec == "h264" and acodec in ("aac", "mp3"):
-        logger.info("Streams are already H.264/AAC. Using ultra-fast direct stream copy for %s", input_file.name)
+    # 2. Video Stream Copy if H.264 video with other audio format or silent synthesis
+    # 3. High-efficiency Transcode optimized for Render free tier (0.1 vCPU, 512MB RAM)
+    if vcodec == "h264" and has_audio and acodec in ("aac", "mp3"):
+        logger.info("Streams are already H.264/AAC. Using instant direct stream copy for %s", input_file.name)
         cmd = [
             "ffmpeg", "-y",
             "-i", str(input_file.resolve()),
@@ -83,8 +86,8 @@ async def convert_to_mp4(
             "-progress", "pipe:1",
             str(output_file.resolve()),
         ]
-    elif vcodec == "h264":
-        logger.info("Video stream is already H.264. Copying video, re-encoding audio for %s", input_file.name)
+    elif vcodec == "h264" and has_audio:
+        logger.info("Video is already H.264. Copying video, re-encoding audio for %s", input_file.name)
         cmd = [
             "ffmpeg", "-y",
             "-i", str(input_file.resolve()),
@@ -96,25 +99,76 @@ async def convert_to_mp4(
             "-progress", "pipe:1",
             str(output_file.resolve()),
         ]
-    else:
-        logger.info("Transcoding %s (%s/%s) to H.264/AAC MP4 with ultrafast preset", input_file.name, vcodec, acodec)
+    elif vcodec == "h264" and not has_audio:
+        logger.info("Video is H.264 without audio. Synthesizing silent audio so Telegram renders full video player for %s", input_file.name)
         cmd = [
             "ffmpeg", "-y",
             "-i", str(input_file.resolve()),
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-tune", "fastdecode",
-            "-crf", "26",
-            "-threads", "2",
-            "-vf", "scale=-2:'min(720,ih)'",
-            "-pix_fmt", "yuv420p",
+            "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+            "-map", "0:v:0", "-map", "1:a:0",
+            "-shortest",
+            "-c:v", "copy",
             "-c:a", "aac",
-            "-b:a", "128k",
-            "-ac", "2",
+            "-b:a", "64k",
             "-movflags", "+faststart",
             "-progress", "pipe:1",
             str(output_file.resolve()),
         ]
+    else:
+        # Non-H.264 containers (e.g. WebM VP8/VP9/AV1, AVI, MKV, WMV)
+        logger.info(
+            "Transcoding %s (vcodec: %s, acodec: %s, height: %s, has_audio: %s) to H.264 MP4",
+            input_file.name, vcodec, acodec, height, has_audio
+        )
+        if has_audio:
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", str(input_file.resolve()),
+                "-map", "0:v:0", "-map", "0:a:0?",
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-tune", "fastdecode",
+                "-crf", "28",
+                "-threads", "2",
+            ]
+            if height > 720:
+                cmd.extend(["-vf", "scale=-2:720:flags=fast_bilinear"])
+            cmd.extend(["-pix_fmt", "yuv420p"])
+
+            if acodec in ("aac", "mp3"):
+                cmd.extend(["-c:a", "copy"])
+            else:
+                cmd.extend(["-c:a", "aac", "-b:a", "128k", "-ac", "2"])
+
+            cmd.extend([
+                "-movflags", "+faststart",
+                "-progress", "pipe:1",
+                str(output_file.resolve()),
+            ])
+        else:
+            # Video with NO audio track (e.g. silent WebM): inject silent stereo AAC so Telegram renders video controls
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", str(input_file.resolve()),
+                "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-shortest",
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-tune", "fastdecode",
+                "-crf", "28",
+                "-threads", "2",
+            ]
+            if height > 720:
+                cmd.extend(["-vf", "scale=-2:720:flags=fast_bilinear"])
+            cmd.extend([
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "64k",
+                "-movflags", "+faststart",
+                "-progress", "pipe:1",
+                str(output_file.resolve()),
+            ])
 
     reporter.set_phase("Converting", total_bytes=input_size)
 

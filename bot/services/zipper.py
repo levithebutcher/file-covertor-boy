@@ -1,8 +1,4 @@
-"""
-Multi-file archiving service.
-Collects files into staging, creates zip archive, and splits into multi-part
-volumes if total size exceeds the Telegram 2 GB ceiling.
-"""
+from __future__ import annotations
 
 import os
 import shutil
@@ -36,6 +32,15 @@ def get_staging_stats(user_id: int) -> Tuple[int, int, str]:
     total_size = sum(f.stat().st_size for f in files)
     latest_file = files[-1].name if files else "None"
     return len(files), total_size, latest_file
+
+
+def get_staging_files_info(user_id: int) -> Tuple[int, int, List[Tuple[str, int]]]:
+    """Return (count, total_size_bytes, [(filename, file_size), ...])."""
+    staging_dir = get_user_staging_dir(user_id)
+    files = sorted([f for f in staging_dir.iterdir() if f.is_file()], key=lambda f: f.stat().st_mtime)
+    total_size = sum(f.stat().st_size for f in files)
+    file_info = [(f.name, f.stat().st_size) for f in files]
+    return len(files), total_size, file_info
 
 
 def clear_staging(user_id: int) -> None:

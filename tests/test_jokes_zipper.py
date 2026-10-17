@@ -9,6 +9,7 @@ from bot.utils.jokes import get_random_joke, format_joke_card, NONVEG_JOKES
 from bot.services.zipper import (
     add_file_to_staging,
     get_staging_stats,
+    get_staging_files_info,
     clear_staging,
     create_zip_package,
 )
@@ -49,9 +50,23 @@ async def test_zipper_workflow():
         assert count == 2
         assert latest == "pic1.jpg"
 
-        # Staging stats
+        # Staging stats and file info
         c, s, l = get_staging_stats(test_user_id)
         assert c == 2
+
+        count_info, total_size, file_info = get_staging_files_info(test_user_id)
+        assert count_info == 2
+        assert len(file_info) == 2
+        assert file_info[0][0] == "doc1.txt"
+        assert file_info[1][0] == "pic1.jpg"
+
+        # Test staging card generation with file list
+        from bot.templates.cards import zipper_staging_card
+        card = zipper_staging_card(count_info, total_size, file_info)
+        assert "ZIP BATCH IN PROGRESS" in card
+        assert "doc1.txt" in card
+        assert "pic1.jpg" in card
+        assert "create zip" in card
 
         # Create package
         out_dir = tmp_path / "out"

@@ -35,7 +35,7 @@ from bot.services.unzipper import (
     get_and_validate_extracted_files,
     PasswordRequiredError,
 )
-from bot.services.zipper import add_file_to_staging
+from bot.services.zipper import add_file_to_staging, get_staging_files_info
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,10 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v"}
 
 # In-memory dictionary for password-protected archives awaiting user reply
 pending_password_archives: dict[int, dict] = {}
+
+# Zipper staging coordination: lock per user & single active status card
+user_staging_locks: dict[int, asyncio.Lock] = {}
+active_zipper_cards: dict[int, Message] = {}
 
 
 @Client.on_message((filters.video | filters.document | filters.photo | filters.audio) & filters.private)
@@ -125,7 +129,7 @@ async def handle_incoming_media(client: Client, message: Message):
     elif mode == "zip":
         task_id = str(uuid.uuid4())[:8]
         task_dir = get_task_dir(user_id, task_id)
-        status_msg = await message.reply_text("📥 <i>Downloading file to zip staging...</i>")
+        status_msg = await message.reply_text(f"📥 <i>Downloading <code>{file_name}</code> to zip queue...</i>")
 
         reporter = ProgressReporter(
             status_message=status_msg,
@@ -148,16 +152,32 @@ async def handle_incoming_media(client: Client, message: Message):
             if not actual_file.exists():
                 raise FileNotFoundError(f"Failed to save staged file: {download_dest}")
 
-            count, total_staged, latest = await add_file_to_staging(
-                user_id=user_id,
-                source_file=actual_file,
-                original_filename=file_name,
-            )
+            if user_id not in user_staging_locks:
+                user_staging_locks[user_id] = asyncio.Lock()
 
-            await status_msg.edit_text(
-                text=zipper_staging_card(count, total_staged, latest),
-                reply_markup=zipper_actions_keyboard(),
-            )
+            async with user_staging_locks[user_id]:
+                await add_file_to_staging(
+                    user_id=user_id,
+                    source_file=actual_file,
+                    original_filename=file_name,
+                )
+                count, total_staged, file_info = get_staging_files_info(user_id)
+
+                # Delete the old active staging card message if one exists to keep chat clear
+                old_card = active_zipper_cards.get(user_id)
+                if old_card:
+                    try:
+                        await old_card.delete()
+                    except Exception:
+                        pass
+
+                card_text = zipper_staging_card(count, total_staged, file_info)
+                new_card = await status_msg.edit_text(
+                    text=card_text,
+                    reply_markup=zipper_actions_keyboard(count),
+                )
+                active_zipper_cards[user_id] = new_card
+
         except Exception as e:
             logger.error("Failed to stage file for zipper: %s", e)
             await status_msg.edit_text(f"⚠️ <b>Failed to stage file:</b> <code>{e}</code>")
@@ -376,9 +396,9 @@ async def process_video_locally(client: Client, message: Message, file_name: str
                 chat_id=message.chat.id,
                 video=str(out_file.resolve()),
                 caption=f"🎬 <b>Converted to MP4:</b> <code>{out_file.name}</code>",
-                duration=metadata.get("duration", 0),
-                width=metadata.get("width", 1280),
-                height=metadata.get("height", 720),
+                duration=max(1, int(round(metadata.get("duration", 0)))),
+                width=int(metadata.get("width", 1280)),
+                height=int(metadata.get("height", 720)),
                 thumb=str(thumb_path.resolve()) if thumb_path else None,
                 supports_streaming=True,
                 progress=reporter.pyrogram_callback,

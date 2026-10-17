@@ -2,6 +2,8 @@
 Media metadata extraction using ffprobe and thumbnail generation using ffmpeg.
 """
 
+from __future__ import annotations
+
 import json
 import asyncio
 import logging
@@ -49,8 +51,8 @@ async def get_video_metadata(file_path: Path | str) -> Dict[str, Any]:
         # Extract format duration
         if "format" in info and "duration" in info["format"]:
             try:
-                metadata["duration"] = int(float(info["format"]["duration"]))
-            except ValueError:
+                metadata["duration"] = max(1, int(round(float(info["format"]["duration"]))))
+            except (ValueError, TypeError):
                 pass
 
         # Inspect streams
@@ -62,8 +64,8 @@ async def get_video_metadata(file_path: Path | str) -> Dict[str, Any]:
                 metadata["height"] = int(stream.get("height", 720))
                 if not metadata["duration"] and "duration" in stream:
                     try:
-                        metadata["duration"] = int(float(stream["duration"]))
-                    except ValueError:
+                        metadata["duration"] = max(1, int(round(float(stream["duration"]))))
+                    except (ValueError, TypeError):
                         pass
             elif codec_type == "audio" and metadata["acodec"] == "unknown":
                 metadata["acodec"] = stream.get("codec_name", "unknown")

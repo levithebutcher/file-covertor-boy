@@ -49,11 +49,12 @@ def progress_cancel_keyboard(task_id: str) -> InlineKeyboardMarkup:
     ])
 
 
-def zipper_actions_keyboard() -> InlineKeyboardMarkup:
+def zipper_actions_keyboard(file_count: int = 0) -> InlineKeyboardMarkup:
     """Action buttons for Zipper staging batches."""
+    create_label = f"📦 Create .ZIP Now ({file_count} files)" if file_count > 0 else "📦 Create .ZIP Now"
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("📦 Create .ZIP Now", callback_data="zip_finish"),
+            InlineKeyboardButton(create_label, callback_data="zip_finish"),
             InlineKeyboardButton("🗑️ Clear Batch", callback_data="zip_clear"),
         ],
         [

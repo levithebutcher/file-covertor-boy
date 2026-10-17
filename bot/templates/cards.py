@@ -143,17 +143,34 @@ def access_denied_card(user_id: int, user_name: str = "Friend") -> str:
     )
 
 
-def zipper_staging_card(file_count: int, total_size: int, latest_file: str) -> str:
+def zipper_staging_card(
+    file_count: int,
+    total_size: int,
+    latest_file_or_list: str | list[tuple[str, int]] = "None",
+) -> str:
     """Status card for active zipper batch."""
     size_str = format_bytes(total_size)
-    return (
-        "🗜️ <b>ZIP BATCH IN PROGRESS</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📁 <b>Queued Files:</b> <code>{file_count}</code>\n"
-        f"📦 <b>Total Staged Size:</b> <code>{size_str}</code>\n"
-        f"📄 <b>Latest Added:</b> <code>{latest_file}</code>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Send more files to add to this archive, or tap\n"
-        "<b>'Create .ZIP Now'</b> to build and upload the package.\n\n"
-        "<i>(Files > 2 GB will automatically be split into volumes)</i>"
-    )
+    lines = [
+        "🗜️ <b>ZIP BATCH IN PROGRESS</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ]
+
+    if isinstance(latest_file_or_list, list) and latest_file_or_list:
+        lines.append(f"📁 <b>Staged Queue ({file_count} file{'s' if file_count != 1 else ''}):</b>")
+        displayed_files = latest_file_or_list[:8]
+        for idx, (fname, fsize) in enumerate(displayed_files, 1):
+            lines.append(f"<b>{idx}.</b> <code>{fname}</code> ({format_bytes(fsize)})")
+        if len(latest_file_or_list) > 8:
+            lines.append(f"<i>... and {len(latest_file_or_list) - 8} more file(s)</i>")
+    elif isinstance(latest_file_or_list, str):
+        lines.append(f"📁 <b>Queued Files:</b> <code>{file_count}</code>")
+        lines.append(f"📄 <b>Latest Added:</b> <code>{latest_file_or_list}</code>")
+
+    lines.extend([
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"📦 <b>Total Archive Size:</b> <code>{size_str}</code>",
+        "",
+        "👉 Send more files to add to this queue, or tap",
+        "<b>'Create .ZIP Now'</b> (or type <i>create zip</i>) to bundle all files into one .zip!",
+    ])
+    return "\n".join(lines)
