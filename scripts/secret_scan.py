@@ -23,7 +23,6 @@ SECRET_PATTERNS = [
 
 BLOCKED_FILES = [
     ".env",
-    "run_colab.ipynb",
 ]
 
 BLOCKED_EXTENSIONS = [

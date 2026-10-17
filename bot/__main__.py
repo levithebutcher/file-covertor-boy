@@ -1,12 +1,19 @@
 """
 Main application entry point for Telegram Media Suite.
-Runs standalone on Render Web Service or local machine.
+Runs standalone on Render Web Service, VPS, or local machine.
 """
 
 import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path so 'python bot/__main__.py' works from anywhere
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 import asyncio
 import logging
-import signal
+from hydrogram import idle
 from bot.core.client import bot_client
 from bot.core.web_server import start_web_server
 
@@ -35,27 +42,21 @@ async def main():
     logger.info("Starting Telegram MTProto client...")
     try:
         await bot_client.start()
-        logger.info("Telegram client online! Bot is actively listening for updates.")
+        me = await bot_client.get_me()
+        logger.info(
+            "Telegram client online! Logged in as %s (@%s). Actively listening for updates.",
+            me.first_name,
+            me.username,
+        )
     except Exception as e:
         logger.error("Failed to start Telegram client: %s", e)
+        if runner:
+            await runner.cleanup()
+        return
 
-    # Graceful shutdown event
-    stop_event = asyncio.Event()
-
-    def signal_handler():
-        logger.info("Received termination signal. Shutting down gracefully...")
-        stop_event.set()
-
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, signal_handler)
-        except (NotImplementedError, RuntimeError):
-            # Windows might not support loop.add_signal_handler
-            pass
-
+    # 3. Idle until termination signal (Ctrl+C, SIGINT, SIGTERM)
     try:
-        await stop_event.wait()
+        await idle()
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:

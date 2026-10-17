@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary
 
-To build a high-performance, resilient, and production-grade Telegram bot supporting **Video Conversion (FFmpeg)**, **Archive Extraction (Unzipper)**, and **Multi-File Archiving (Zipper)** on **Render Free (512 MB RAM)** with **Google Colab Big-File Handoff**, we investigated and cloned the top active open-source Telegram bots on GitHub.
+To build a high-performance, resilient, and production-grade Telegram bot supporting **Video Conversion (FFmpeg)**, **Archive Extraction (Unzipper)**, and **Multi-File Archiving (Zipper)** on **Render Free (512 MB RAM)** and local machines, we investigated and cloned the top active open-source Telegram bots on GitHub.
 
 We evaluated them across 7 critical criteria:
 1. **Activity & Maintenance** (commits in last 12 months)
@@ -61,8 +61,6 @@ From analyzing these codebases, we extracted the gold-standard patterns while el
 ### 3. From `Telegram-Leecher`:
 - **Split Multi-Part Archive Generation**:
   - When archiving multiple files into a `.zip` in Zipper mode, if the total archive exceeds the 2 GB Telegram ceiling, automatically split into multi-part volumes (`.zip.001`, `.zip.002` or `7z a -v1900m`) so each part can be uploaded without hitting Telegram limits.
-- **Google Colab Automation Patterns**:
-  - Clean notebook execution model with background worker loops and automated dependency installation.
 
 ---
 
@@ -102,5 +100,5 @@ From analyzing these codebases, we extracted the gold-standard patterns while el
 We acknowledge and credit the following open-source projects for their architectural patterns and inspiration:
 - **[mirror-leech-telegram-bot](https://github.com/anasty17/mirror-leech-telegram-bot)** (Anas Tayyar) — FFmpeg real-time progress parsing via pipe, 7z CLI streaming, and Telegram FloodWait management.
 - **[unzip-bot](https://github.com/EDM115/unzip-bot)** (EDM115) — Archive format extraction rules and 2 GB threshold protections.
-- **[Telegram-Leecher](https://github.com/XronTrix10/Telegram-Leecher)** (XronTrix10) — Multi-part volume splitting concepts and Colab execution workflow.
+- **[Telegram-Leecher](https://github.com/XronTrix10/Telegram-Leecher)** (XronTrix10) — Multi-part volume splitting concepts.
 - **[Hydrogram](https://github.com/hydrogram/hydrogram)** — Asynchronous Telegram MTProto framework.

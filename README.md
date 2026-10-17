@@ -55,7 +55,8 @@ pytest tests/
 
 ### 5. Launch Bot
 ```bash
-python -m bot
+python run.py
+# or: python -m bot
 ```
 
 ---
@@ -77,20 +78,6 @@ This bot includes a production Dockerfile and `render.yaml` blueprint optimized 
    - Set up an external cron pinger (e.g. [cron-job.org](https://cron-job.org) or UptimeRobot) to send an HTTP GET request to:
      `https://your-service.onrender.com/health`
      every **5 to 10 minutes**.
-
----
-
-## ⚡ Optional: Run Standalone on Google Colab
-
-If you ever want to run the bot directly on Google Colab with free GPU/high RAM:
-1. Generate your prefilled, ready-to-run Colab notebook locally:
-   ```bash
-   python scripts/generate_colab.py
-   ```
-   *(This creates `run_colab.ipynb` using your local `.env` — it is strictly git-ignored!)*
-2. Open [Google Colab](https://colab.research.google.com).
-3. Upload `run_colab.ipynb` and click **Runtime ➔ Run all**.
-4. The bot will run standalone on Colab with zero extra setup needed!
 
 ---
 

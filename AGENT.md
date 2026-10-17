@@ -23,8 +23,7 @@ Telegram Media Suite is a high-performance, asynchronous Telegram bot built with
 | :--- | :--- | :--- |
 | **MTProto Library** | **Hydrogram** (v0.2.0) | Active community continuation of Pyrogram with support for Python 3.11–3.14+, modern Telegram DC layers, and native 2 GB MTProto uploads. |
 | **Database** | **Local SQLite (WAL Mode)** | Completely standalone, persistent, zero-network, and lightning fast. Eliminates external MongoDB Atlas connection latency, DNS SRV errors, and network timeouts. |
-| **Primary Host** | **Render Free Web Service** | Bound to HTTP port 10000 instantly (< 50ms) on startup to satisfy Render health checks and external cron keep-alive pingers without timing out. |
-| **Standalone Colab Option** | **`run_colab.ipynb`** | Standalone Jupyter notebook generated locally on device for running the bot directly on Google Colab with free GPU/RAM if desired. Zero handoff code clutter in the bot repo. |
+| **Primary Host** | **Render Free Web Service / Local** | Bound to HTTP port 10000 instantly (< 50ms) on startup to satisfy Render health checks and external cron keep-alive pingers without timing out. |
 | **Subprocess Execution** | `create_subprocess_exec` | Avoids shell string interpolation (`shell=True`). All arguments passed as structured lists with sanitized filenames to prevent shell command injection. |
 | **Progress Updates** | **Throttled Reporter (4.5s)** | Telegram restricts message edits (`FloodWait: 429`). The `ProgressReporter` throttles live progress edits to once every 4.5 seconds per task, displays a visual bar (`■■■■□□□□`), ETA, speed, and attaches a live Cancel button. |
 
@@ -82,11 +81,9 @@ covertor/
 │       ├── cards.py              # Glassmorphic Unicode UI layouts
 │       └── buttons.py            # Inline keyboard builders
 │
-├── colab/
-│   └── standalone_bot.ipynb      # Standalone Colab notebook template
-│
+├── run.py                        # Root convenience entrypoint
+├── main.py                       # Root convenience entrypoint
 ├── scripts/
-│   ├── generate_colab.py         # Generates local prefilled ready-to-run run_colab.ipynb
 │   └── secret_scan.py            # Pre-commit secret scanning validation script
 │
 └── tests/                        # Automated Unit Tests (pytest)
@@ -119,4 +116,4 @@ covertor/
 2. **NEVER print secrets in logs:** No tokens, API hashes, or passwords in exceptions or logs.
 3. **No Shell Invocations:** Always use `asyncio.create_subprocess_exec(*arg_list)`. Never construct shell commands with `f"ffmpeg -i {filename}"`.
 4. **Pre-commit Scan:** Run `python scripts/secret_scan.py` before any commit to verify no secrets are staged.
-5. **Preserve .gitignore:** Ensure `.env`, `*.session`, `run_colab.ipynb`, `data/`, and `temp/` are never removed from `.gitignore`.
+5. **Preserve .gitignore:** Ensure `.env`, `*.session`, `data/`, and `temp/` are never removed from `.gitignore`.

@@ -46,10 +46,10 @@ staging/
 logs/
 *.log
 
-# Jupyter / Colab
+# Notebooks & Checkpoints
 .ipynb_checkpoints/
-run_colab.ipynb
-*prefilled*.ipynb
+*.ipynb
+
 
 # IDE / Editor
 .vscode/
