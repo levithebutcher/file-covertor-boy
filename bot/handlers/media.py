@@ -3,6 +3,8 @@ Media handler and dispatcher for Video Conversion, Unzipping, and Zipper staging
 Routes incoming media based on the user's active mode.
 """
 
+from __future__ import annotations
+
 import uuid
 import asyncio
 import logging

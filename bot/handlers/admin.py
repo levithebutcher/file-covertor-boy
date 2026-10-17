@@ -3,6 +3,8 @@ Admin and user management handlers (/adduser, /removeuser, /users, /stats).
 Restricted exclusively to the bot OWNER_ID and ADMIN_IDS.
 """
 
+from __future__ import annotations
+
 from hydrogram import Client, filters
 from hydrogram.types import Message
 from bot.config import settings

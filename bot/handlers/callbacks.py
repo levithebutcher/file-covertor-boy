@@ -2,11 +2,13 @@
 General callback query handlers for cancellation, dialogs, and zipper actions.
 """
 
+from __future__ import annotations
+
 import uuid
 import logging
 from pathlib import Path
 from hydrogram import Client, filters
-from hydrogram.types import CallbackQuery
+from hydrogram.types import CallbackQuery, Message
 from bot.services.queue import queue_manager
 from bot.services.zipper import clear_staging, create_zip_package, get_staging_stats
 from bot.utils.progress import ProgressReporter

@@ -3,6 +3,8 @@ Mode switcher handlers and interactive inline keyboard controllers.
 Provides instant feedback, live checkmark toggles, and direct slash commands.
 """
 
+from __future__ import annotations
+
 from hydrogram import Client, filters
 from hydrogram.types import Message, CallbackQuery
 from bot.database.users import is_whitelisted, get_user_mode, set_user_mode

@@ -4,6 +4,8 @@ Responds to casual chatter (hi, hello, etc.) with spicy non-veg jokes and guidan
 while gracefully ignoring commands and password replies.
 """
 
+from __future__ import annotations
+
 from hydrogram import Client, filters
 from hydrogram.types import Message
 from bot.database.users import is_whitelisted
