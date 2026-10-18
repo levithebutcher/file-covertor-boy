@@ -11,7 +11,7 @@
 Telegram Media Suite is a high-performance, asynchronous Telegram bot built with Python 3.11+ and Hydrogram (MTProto). It provides three core media services up to Telegram's 2 GB non-premium limit:
 
 1. **🎬 Video Converter (Top Priority):** Converts all popular video containers (`.mkv`, `.avi`, `.mov`, `.webm`, `.flv`, `.wmv`, `.ts`, etc.) into streamable, web-optimized `.mp4` (H.264/AAC) using asynchronous FFmpeg subprocesses with real-time stdout progress parsing and instant cancellation.
-2. **📦 Unzipper (Top Priority):** Extracts `.zip`, `.rar`, `.7z`, `.tar`, `.gz`, `.tgz`, `.tar.bz2` archives using `7z` (with Python library fallbacks), delivers photos/videos in standardized Telegram albums, handles password protection, and uploads valid files sequentially with flood throttling.
+2. **📦 Unzipper (Top Priority):** Extracts `.zip`, `.rar`, `.7z`, `.tar`, `.gz`, `.tgz`, `.tar.bz2`, `.cbr`, `.cbz` archives using a resilient multi-backend extraction pipeline (`7z`, dedicated `unrar`, `unar`, `bsdtar`/`tar`, and `rarfile`/`py7zr`), delivers photos/videos in standardized Telegram albums, handles password protection, and uploads valid files sequentially with flood throttling.
 3. **🗜️ Zipper (Multi-File Bundler):** Staged collector allowing users to send multiple files, visualize batch counts in real time, and trigger compression into `.zip`. Automatically splits archives into multi-part volumes if total size exceeds 2 GB.
 4. **🎭 Casual Text Humor:** Non-veg / adult humor auto-replies to random conversational messages ("hi", "hlw", etc.).
 
