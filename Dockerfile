@@ -9,11 +9,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
     PORT=10000
 
-# Install system dependencies: FFmpeg, 7-Zip, RAR tools, and speedup build tools
-RUN echo "deb http://deb.debian.org/debian bookworm non-free contrib" > /etc/apt/sources.list.d/non-free.list && \
+# Install system dependencies: FFmpeg, 7-Zip, unar, unrar, archive tools, and speedup build tools
+RUN (sed -i 's/Components: main/Components: main contrib non-free non-free-firmware/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true) && \
+    (echo "deb http://deb.debian.org/debian bookworm non-free contrib non-free-firmware" > /etc/apt/sources.list.d/non-free.list) && \
     apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         p7zip-full \
+        unar \
+        unrar-free \
         libarchive-tools \
         curl \
         ca-certificates \

@@ -55,3 +55,22 @@ async def test_password_protected_zip_detection():
         # When extracting without password or with wrong password, should raise PasswordRequiredError
         # (Standard zipfile writestr doesn't encrypt without third party or flags, let's test fallback_extract)
         assert zip_file.exists()
+
+
+def test_rar_extension_support():
+    assert is_archive_file("sample.rar") is True
+    assert is_archive_file("UPPER.RAR") is True
+    assert is_archive_file("comic.cbr") is True
+    assert is_archive_file("archive.cbz") is True
+
+
+def test_rarfile_tool_configuration():
+    from bot.services.unzipper import configure_rarfile_tool
+    import rarfile
+    configure_rarfile_tool()
+    assert (
+        rarfile.UNRAR_TOOL is not None
+        or rarfile.UNAR_TOOL is not None
+        or rarfile.SEVENZIP_TOOL is not None
+        or rarfile.BSDTAR_TOOL is not None
+    )
