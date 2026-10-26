@@ -74,3 +74,28 @@ def test_rarfile_tool_configuration():
         or rarfile.SEVENZIP_TOOL is not None
         or rarfile.BSDTAR_TOOL is not None
     )
+
+
+@pytest.mark.asyncio
+async def test_sevenzip_archive_extraction():
+    import py7zr
+    from bot.services.unzipper import extract_archive_7z
+    from bot.utils.progress import ProgressReporter
+    from unittest.mock import AsyncMock
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        arch = tmp_path / "test.7z"
+        (tmp_path / "data.txt").write_text("sevenzip test content")
+
+        with py7zr.SevenZipFile(arch, "w") as z:
+            z.write(tmp_path / "data.txt", "data.txt")
+
+        dest = tmp_path / "extracted_7z"
+        reporter = ProgressReporter(AsyncMock(), "test.7z", "task_test", "Extracting", arch.stat().st_size)
+
+        success = await extract_archive_7z(arch, dest, "task_test", reporter)
+        assert success is True
+        extracted_files = list(dest.iterdir())
+        assert any(f.name == "data.txt" for f in extracted_files)
+

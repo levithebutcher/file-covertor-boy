@@ -50,17 +50,22 @@ def configure_rarfile_tool():
     """Auto-detect available extraction tool on host system for rarfile."""
     unrar = shutil.which("unrar")
     unar = shutil.which("unar")
-    sevenzip = shutil.which("7z")
+    sevenzip = shutil.which("7z") or shutil.which("7zz")
     bsdtar = shutil.which("bsdtar") or shutil.which("tar")
 
     if unrar:
         rarfile.UNRAR_TOOL = unrar
-    elif unar:
+    if unar:
         rarfile.UNAR_TOOL = unar
-    elif sevenzip:
+    if sevenzip:
         rarfile.SEVENZIP_TOOL = sevenzip
-    elif bsdtar:
+    if bsdtar:
         rarfile.BSDTAR_TOOL = bsdtar
+
+    try:
+        rarfile.tool_setup(force=True)
+    except Exception as e:
+        logger.debug("rarfile tool_setup notice: %s", e)
 
 
 async def extract_rar_archive(
@@ -71,15 +76,44 @@ async def extract_rar_archive(
     """
     Robust multi-backend RAR extractor.
     Tries in sequence:
-    1. unrar CLI
-    2. unar CLI (The Unarchiver)
+    1. unar CLI (The Unarchiver - handles RAR 1-5 without proprietary dependencies)
+    2. unrar CLI (official WinRAR binary if available)
     3. bsdtar / tar CLI (libarchive)
-    4. Python rarfile with auto-configured tool
+    4. 7z / 7zz CLI
+    5. Python rarfile with auto-configured tool
     """
+    dest_dir.mkdir(parents=True, exist_ok=True)
     dest_str = str(dest_dir.resolve())
     arch_str = str(archive_path.resolve())
 
-    # 1. unrar CLI
+    # 1. unar CLI (The Unarchiver - most compatible across all RAR versions)
+    unar_bin = shutil.which("unar")
+    if unar_bin:
+        try:
+            cmd = [unar_bin, "-o", dest_str, "-f", "-q"]
+            if password:
+                cmd.extend(["-p", password])
+            cmd.append(arch_str)
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.DEVNULL,
+            )
+            stdout, stderr = await proc.communicate()
+            out = (stdout.decode("utf-8", errors="replace") + stderr.decode("utf-8", errors="replace")).lower()
+            if "password" in out and any(w in out for w in ("required", "incorrect", "wrong", "enter", "failed")):
+                raise PasswordRequiredError("RAR archive is password-protected or password was incorrect.")
+            if proc.returncode == 0 and any(dest_dir.rglob("*")):
+                logger.info("Successfully extracted RAR using unar CLI.")
+                return True
+        except PasswordRequiredError:
+            raise
+        except Exception as e:
+            logger.debug("unar CLI error: %s", e)
+
+    # 2. unrar CLI
     unrar_bin = shutil.which("unrar")
     if unrar_bin:
         try:
@@ -94,45 +128,20 @@ async def extract_rar_archive(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.DEVNULL,
             )
             stdout, stderr = await proc.communicate()
             out = (stdout.decode("utf-8", errors="replace") + stderr.decode("utf-8", errors="replace")).lower()
-            if any(w in out for w in ("password", "encrypted", "checksum error in the encrypted file")):
-                if "corrupt" not in out or "password" in out:
+            if any(w in out for w in ("password", "encrypted", "checksum error in the encrypted file", "corrupt")):
+                if "password" in out or "encrypted" in out:
                     raise PasswordRequiredError("RAR archive is password-protected or password was incorrect.")
-            if proc.returncode == 0:
+            if proc.returncode == 0 and any(dest_dir.rglob("*")):
                 logger.info("Successfully extracted RAR using unrar CLI.")
                 return True
         except PasswordRequiredError:
             raise
         except Exception as e:
             logger.debug("unrar CLI error: %s", e)
-
-    # 2. unar CLI (The Unarchiver)
-    unar_bin = shutil.which("unar")
-    if unar_bin:
-        try:
-            cmd = [unar_bin, "-o", dest_str, "-f"]
-            if password:
-                cmd.extend(["-p", password])
-            cmd.append(arch_str)
-
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate()
-            out = (stdout.decode("utf-8", errors="replace") + stderr.decode("utf-8", errors="replace")).lower()
-            if "password" in out and any(w in out for w in ("required", "incorrect", "wrong", "enter")):
-                raise PasswordRequiredError("RAR archive is password-protected or password was incorrect.")
-            if proc.returncode == 0:
-                logger.info("Successfully extracted RAR using unar CLI.")
-                return True
-        except PasswordRequiredError:
-            raise
-        except Exception as e:
-            logger.debug("unar CLI error: %s", e)
 
     # 3. bsdtar / tar CLI (libarchive)
     tar_bin = shutil.which("bsdtar") or shutil.which("tar")
@@ -145,29 +154,58 @@ async def extract_rar_archive(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.DEVNULL,
             )
             stdout, stderr = await proc.communicate()
             out = (stdout.decode("utf-8", errors="replace") + stderr.decode("utf-8", errors="replace")).lower()
             if any(w in out for w in ("passphrase", "encrypted", "password")):
                 raise PasswordRequiredError("RAR archive is password-protected or passphrase incorrect.")
-            if proc.returncode == 0:
-                extracted = list(dest_dir.rglob("*"))
-                if any(f.is_file() for f in extracted):
-                    logger.info("Successfully extracted RAR using %s.", tar_bin)
-                    return True
+            if proc.returncode == 0 and any(dest_dir.rglob("*")):
+                logger.info("Successfully extracted RAR using %s.", tar_bin)
+                return True
         except PasswordRequiredError:
             raise
         except Exception as e:
             logger.debug("bsdtar/tar error: %s", e)
 
-    # 4. rarfile library with auto-configured tool
+    # 4. 7z / 7zz CLI
+    seven_bin = shutil.which("7z") or shutil.which("7zz")
+    if seven_bin:
+        try:
+            cmd = [seven_bin, "x", f"-o{dest_str}", "-y", "-aot"]
+            if password:
+                cmd.append(f"-p{password}")
+            else:
+                cmd.append("-p-")
+            cmd.append(arch_str)
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.DEVNULL,
+            )
+            stdout, stderr = await proc.communicate()
+            out = (stdout.decode("utf-8", errors="replace") + stderr.decode("utf-8", errors="replace")).lower()
+            if any(w in out for w in ("wrong password", "enter password", "can not open encrypted archive")):
+                raise PasswordRequiredError("RAR archive is password-protected or password was incorrect.")
+            if proc.returncode == 0 and any(dest_dir.rglob("*")):
+                logger.info("Successfully extracted RAR using 7z CLI.")
+                return True
+        except PasswordRequiredError:
+            raise
+        except Exception as e:
+            logger.debug("7z RAR extraction error: %s", e)
+
+    # 5. rarfile library with auto-configured tool
     try:
         configure_rarfile_tool()
         with rarfile.RarFile(archive_path) as rf:
             if password:
                 rf.setpassword(password)
             rf.extractall(dest_dir)
-            return True
+            if any(dest_dir.rglob("*")):
+                return True
     except rarfile.PasswordRequired:
         raise PasswordRequiredError("RAR archive is password-protected.")
     except rarfile.BadRarFile as bre:
@@ -181,37 +219,139 @@ async def extract_rar_archive(
 
 
 async def fallback_extract(archive_path: Path, dest_dir: Path, password: Optional[str] = None) -> bool:
-    """Fallback extractor using zipfile, tarfile, py7zr, or extract_rar_archive."""
+    """Fallback extractor using zipfile, tarfile, py7zr, bsdtar/tar, unar, or extract_rar_archive."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
     ext = archive_path.suffix.lower()
+    arch_str = str(archive_path.resolve())
+    dest_str = str(dest_dir.resolve())
+
     try:
         if ext == ".zip":
-            with zipfile.ZipFile(archive_path, "r") as zf:
-                pwd = password.encode() if password else None
-                try:
+            # 1. Standard python zipfile
+            try:
+                with zipfile.ZipFile(archive_path, "r") as zf:
+                    pwd = password.encode() if password else None
                     zf.extractall(dest_dir, pwd=pwd)
+                    if any(dest_dir.rglob("*")):
+                        return True
+            except RuntimeError as re:
+                if "password" in str(re).lower() or "encrypted" in str(re).lower():
+                    raise PasswordRequiredError("Zip archive is password-protected.")
+            except Exception as ze:
+                logger.debug("Python zipfile failed (%s), attempting bsdtar/unar fallback", ze)
+
+            # 2. bsdtar/tar fallback for zip (handles Deflate64, WinZip AES)
+            tar_bin = shutil.which("bsdtar") or shutil.which("tar")
+            if tar_bin:
+                cmd = [tar_bin, "-xf", arch_str, "-C", dest_str]
+                if password:
+                    cmd.extend(["--passphrase", password])
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    stdin=asyncio.subprocess.DEVNULL,
+                )
+                stdout, stderr = await proc.communicate()
+                out = (stdout.decode("utf-8", errors="replace") + stderr.decode("utf-8", errors="replace")).lower()
+                if any(w in out for w in ("passphrase", "encrypted", "password")):
+                    raise PasswordRequiredError("Zip archive is password-protected.")
+                if proc.returncode == 0 and any(dest_dir.rglob("*")):
                     return True
-                except RuntimeError as re:
-                    if "password" in str(re).lower() or "encrypted" in str(re).lower():
-                        raise PasswordRequiredError("Zip archive is password-protected.")
-                    raise re
+
+            # 3. unar fallback for zip
+            unar_bin = shutil.which("unar")
+            if unar_bin:
+                cmd = [unar_bin, "-o", dest_str, "-f", "-q"]
+                if password:
+                    cmd.extend(["-p", password])
+                cmd.append(arch_str)
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    stdin=asyncio.subprocess.DEVNULL,
+                )
+                stdout, stderr = await proc.communicate()
+                out = (stdout.decode("utf-8", errors="replace") + stderr.decode("utf-8", errors="replace")).lower()
+                if "password" in out and any(w in out for w in ("required", "incorrect", "wrong", "enter")):
+                    raise PasswordRequiredError("Zip archive is password-protected.")
+                if proc.returncode == 0 and any(dest_dir.rglob("*")):
+                    return True
 
         elif ext in (".rar", ".cbr"):
             return await extract_rar_archive(archive_path, dest_dir, password)
 
         elif ext == ".7z":
+            # 1. Python py7zr
             try:
                 with py7zr.SevenZipFile(archive_path, mode="r", password=password) as archive:
                     archive.extractall(dest_dir)
-                    return True
+                    if any(dest_dir.rglob("*")):
+                        return True
             except (py7zr.exceptions.PasswordRequired, py7zr.exceptions.Bad7zFile) as pe:
                 if "password" in str(pe).lower() or isinstance(pe, py7zr.exceptions.PasswordRequired):
                     raise PasswordRequiredError("7z archive is password-protected.")
-                raise pe
+                logger.debug("py7zr error on %s: %s", archive_path.name, pe)
+            except Exception as e:
+                logger.debug("py7zr general error on %s: %s", archive_path.name, e)
+
+            # 2. bsdtar/tar fallback for 7z
+            tar_bin = shutil.which("bsdtar") or shutil.which("tar")
+            if tar_bin:
+                try:
+                    cmd = [tar_bin, "-xf", arch_str, "-C", dest_str]
+                    if password:
+                        cmd.extend(["--passphrase", password])
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        stdin=asyncio.subprocess.DEVNULL,
+                    )
+                    stdout, stderr = await proc.communicate()
+                    out = (stdout.decode("utf-8", errors="replace") + stderr.decode("utf-8", errors="replace")).lower()
+                    if any(w in out for w in ("passphrase", "encrypted", "password")):
+                        raise PasswordRequiredError("7z archive is password-protected or passphrase incorrect.")
+                    if proc.returncode == 0 and any(dest_dir.rglob("*")):
+                        logger.info("Successfully extracted 7z using %s", tar_bin)
+                        return True
+                except PasswordRequiredError:
+                    raise
+                except Exception as e:
+                    logger.debug("tar 7z error: %s", e)
+
+            # 3. unar fallback for 7z
+            unar_bin = shutil.which("unar")
+            if unar_bin:
+                try:
+                    cmd = [unar_bin, "-o", dest_str, "-f", "-q"]
+                    if password:
+                        cmd.extend(["-p", password])
+                    cmd.append(arch_str)
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        stdin=asyncio.subprocess.DEVNULL,
+                    )
+                    stdout, stderr = await proc.communicate()
+                    out = (stdout.decode("utf-8", errors="replace") + stderr.decode("utf-8", errors="replace")).lower()
+                    if "password" in out and any(w in out for w in ("required", "incorrect", "wrong", "enter")):
+                        raise PasswordRequiredError("7z archive is password-protected.")
+                    if proc.returncode == 0 and any(dest_dir.rglob("*")):
+                        logger.info("Successfully extracted 7z using unar CLI.")
+                        return True
+                except PasswordRequiredError:
+                    raise
+                except Exception as e:
+                    logger.debug("unar 7z error: %s", e)
 
         elif ext in (".tar", ".gz", ".tgz", ".bz2", ".xz") or archive_path.name.lower().endswith((".tar.gz", ".tar.bz2", ".tar.xz")):
             with tarfile.open(archive_path, "r:*") as tf:
                 tf.extractall(dest_dir)
-            return True
+            if any(dest_dir.rglob("*")):
+                return True
 
     except PasswordRequiredError:
         raise
@@ -238,66 +378,70 @@ async def extract_archive_7z(
 
     reporter.set_phase("Extracting")
 
-    # 1. Try 7z extraction first
-    cmd_7z = [
-        "7z", "x",
-        f"-o{dest_str}",
-        "-y",
-        "-aot",
-        "-xr!@PaxHeader",
-        "-bsp1",
-        arch_str,
-    ]
-    if password:
-        cmd_7z.insert(2, f"-p{password}")
-
-    output_lines = []
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd_7z,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await queue_manager.set_process(task_id, proc)
-
-        while True:
-            if reporter.is_cancelled:
-                proc.terminate()
-                break
-            line = await proc.stdout.readline()
-            if not line:
-                break
-            line_str = line.decode("utf-8", errors="replace").strip()
-            output_lines.append(line_str)
-            if "%" in line_str:
-                for part in line_str.split():
-                    if part.endswith("%") and part[:-1].isdigit():
-                        pct = float(part[:-1])
-                        await reporter.update(int(pct), total_bytes=100)
-                        break
-
-        await proc.wait()
-        combined_output = " ".join(output_lines).lower()
-
-        # Check for password indicators in 7z
-        if any(w in combined_output for w in ("wrong password", "enter password", "can not open encrypted archive")):
-            raise PasswordRequiredError("Archive is password-protected or password was incorrect.")
-
-        if proc.returncode == 0:
-            return True
-
-    except PasswordRequiredError:
-        raise
-    except FileNotFoundError:
-        logger.warning("7z executable not found on system. Trying dedicated extractors.")
-    except Exception as e:
-        logger.error("Error executing 7z extraction: %s", e)
-
-    # 2. If archive is RAR, attempt multi-tool RAR extraction
+    # 1. RAR / CBR archives route directly to specialized multi-backend RAR extractor
     if ext in (".rar", ".cbr"):
         return await extract_rar_archive(archive_path, dest_dir, password)
 
-    # 3. Fallback to Python standard and specialized libraries (zipfile, tarfile, py7zr)
+    # 2. For .7z, .zip, .tar, .gz: Attempt 7z / 7zz CLI first if available
+    seven_bin = shutil.which("7z") or shutil.which("7zz")
+    if seven_bin:
+        cmd_7z = [
+            seven_bin, "x",
+            f"-o{dest_str}",
+            "-y",
+            "-aot",
+            "-xr!@PaxHeader",
+            "-bsp1",
+        ]
+        if password:
+            cmd_7z.append(f"-p{password}")
+        else:
+            cmd_7z.append("-p-")  # Prevent 7z from hanging on stdin waiting for password
+        cmd_7z.append(arch_str)
+
+        output_lines = []
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd_7z,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.DEVNULL,
+            )
+            await queue_manager.set_process(task_id, proc)
+
+            while True:
+                if reporter.is_cancelled:
+                    proc.terminate()
+                    break
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                line_str = line.decode("utf-8", errors="replace").strip()
+                output_lines.append(line_str)
+                if "%" in line_str:
+                    for part in line_str.split():
+                        if part.endswith("%") and part[:-1].isdigit():
+                            pct = float(part[:-1])
+                            await reporter.update(int(pct), total_bytes=100)
+                            break
+
+            stderr_data = await proc.stderr.read()
+            await proc.wait()
+            combined_output = (" ".join(output_lines) + " " + stderr_data.decode("utf-8", errors="replace")).lower()
+
+            # Check for password indicators in 7z
+            if any(w in combined_output for w in ("wrong password", "enter password", "can not open encrypted archive", "password is required")):
+                raise PasswordRequiredError("Archive is password-protected or password was incorrect.")
+
+            if proc.returncode == 0 and any(dest_dir.rglob("*")):
+                return True
+
+        except PasswordRequiredError:
+            raise
+        except Exception as e:
+            logger.debug("7z CLI execution notice: %s", e)
+
+    # 3. Fallback to specialized libraries and multi-tools (zipfile, py7zr, bsdtar, unar)
     return await fallback_extract(archive_path, dest_dir, password)
 
 

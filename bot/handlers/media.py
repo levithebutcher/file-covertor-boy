@@ -286,59 +286,75 @@ async def deliver_extracted_contents(
     album_chunks = [media_files[i:i + 10] for i in range(0, len(media_files), 10)]
     total_albums = len(album_chunks)
 
+    delivered_media_count = 0
+    fallback_doc_files = []
+
     for idx, chunk in enumerate(album_chunks, 1):
         if reporter.is_cancelled:
             break
 
         reporter.set_phase(f"Uploading Album ({idx}/{total_albums})")
 
-        if len(chunk) == 1:
-            item = chunk[0]
-            if item.suffix.lower() in PHOTO_EXTENSIONS:
-                await client.send_photo(
-                    chat_id=message.chat.id,
-                    photo=str(item.resolve()),
-                    caption=f"🖼️ <code>{item.name}</code>",
-                )
-            else:
-                await client.send_video(
-                    chat_id=message.chat.id,
-                    video=str(item.resolve()),
-                    caption=f"🎬 <code>{item.name}</code>",
-                )
-        else:
-            media_group = []
-            for item in chunk:
+        try:
+            if len(chunk) == 1:
+                item = chunk[0]
                 if item.suffix.lower() in PHOTO_EXTENSIONS:
-                    media_group.append(InputMediaPhoto(media=str(item.resolve()), caption=f"<code>{item.name}</code>"))
+                    await client.send_photo(
+                        chat_id=message.chat.id,
+                        photo=str(item.resolve()),
+                        caption=f"🖼️ <code>{item.name}</code>",
+                    )
                 else:
-                    media_group.append(InputMediaVideo(media=str(item.resolve()), caption=f"<code>{item.name}</code>"))
+                    await client.send_video(
+                        chat_id=message.chat.id,
+                        video=str(item.resolve()),
+                        caption=f"🎬 <code>{item.name}</code>",
+                    )
+            else:
+                media_group = []
+                for item in chunk:
+                    if item.suffix.lower() in PHOTO_EXTENSIONS:
+                        media_group.append(InputMediaPhoto(media=str(item.resolve()), caption=f"<code>{item.name}</code>"))
+                    else:
+                        media_group.append(InputMediaVideo(media=str(item.resolve()), caption=f"<code>{item.name}</code>"))
 
-            await client.send_media_group(chat_id=message.chat.id, media=media_group)
+                await client.send_media_group(chat_id=message.chat.id, media=media_group)
 
-        await asyncio.sleep(1.5)  # FloodWait throttle between albums
+            delivered_media_count += len(chunk)
+            await asyncio.sleep(1.5)  # FloodWait throttle between albums
 
-    # 2. Deliver non-media document files
-    total_docs = len(doc_files)
-    for idx, item in enumerate(doc_files, 1):
+        except Exception as e:
+            logger.warning("Album upload failed for chunk %d, falling back to document upload: %s", idx, e)
+            fallback_doc_files.extend(chunk)
+
+    # 2. Deliver non-media document files (plus any media files that failed album delivery)
+    all_doc_files = doc_files + fallback_doc_files
+    total_docs = len(all_doc_files)
+    delivered_doc_count = 0
+
+    for idx, item in enumerate(all_doc_files, 1):
         if reporter.is_cancelled:
             break
 
         reporter.set_phase(f"Uploading File ({idx}/{total_docs})", total_bytes=item.stat().st_size)
-        await client.send_document(
-            chat_id=message.chat.id,
-            document=str(item.resolve()),
-            caption=f"📄 <code>{item.name}</code>",
-            progress=reporter.pyrogram_callback,
-        )
-        await asyncio.sleep(1.2)  # Delay between document uploads
+        try:
+            await client.send_document(
+                chat_id=message.chat.id,
+                document=str(item.resolve()),
+                caption=f"📄 <code>{item.name}</code>",
+                progress=reporter.pyrogram_callback,
+            )
+            delivered_doc_count += 1
+            await asyncio.sleep(1.2)  # Delay between document uploads
+        except Exception as e:
+            logger.error("Failed to send document %s: %s", item.name, e)
 
     if not reporter.is_cancelled:
-        summary_text = f"✅ <b>Extraction complete!</b>\n"
-        if media_files:
-            summary_text += f"• Delivered <b>{len(media_files)}</b> photos/videos in <b>{total_albums}</b> albums.\n"
-        if doc_files:
-            summary_text += f"• Delivered <b>{len(doc_files)}</b> documents.\n"
+        summary_text = "✅ <b>Extraction complete!</b>\n"
+        if delivered_media_count:
+            summary_text += f"• Delivered <b>{delivered_media_count}</b> photos/videos in albums.\n"
+        if delivered_doc_count:
+            summary_text += f"• Delivered <b>{delivered_doc_count}</b> documents.\n"
         await status_msg.edit_text(summary_text)
 
 
