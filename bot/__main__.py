@@ -48,6 +48,16 @@ async def main():
             me.first_name,
             me.username,
         )
+
+        # 3. Ensure primary owner is initialized in database
+        from bot.config import settings
+        if settings.primary_owner_id:
+            try:
+                from bot.database.users import add_user
+                await add_user(settings.primary_owner_id, role="owner")
+                logger.info("Primary owner ID %d confirmed and authorized in database.", settings.primary_owner_id)
+            except Exception as e:
+                logger.debug("Notice on owner auto-init: %s", e)
     except Exception as e:
         logger.error("Failed to start Telegram client: %s", e)
         if runner:

@@ -20,9 +20,9 @@ class Settings(BaseSettings):
     api_id: int = Field(..., alias="API_ID")
     api_hash: str = Field(..., alias="API_HASH")
 
-    # Owner / Admin IDs
-    owner_id: Optional[int] = Field(default=None, alias="OWNER_ID")
-    admin_ids_raw: Optional[str] = Field(default=None, alias="ADMIN_IDS")
+    # Owner / Admin IDs (Defaults to primary owner 8942914752 if omitted in env)
+    owner_id: Optional[int] = Field(default=8942914752, alias="OWNER_ID")
+    admin_ids_raw: Optional[str] = Field(default="8942914752", alias="ADMIN_IDS")
 
     # Web Server & Concurrency
     port: int = Field(default=10000, alias="PORT")

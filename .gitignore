@@ -49,6 +49,7 @@ logs/
 # Notebooks & Checkpoints
 .ipynb_checkpoints/
 *.ipynb
+!colab_template.ipynb
 
 
 # IDE / Editor
