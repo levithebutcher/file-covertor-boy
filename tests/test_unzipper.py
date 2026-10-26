@@ -62,6 +62,10 @@ def test_rar_extension_support():
     assert is_archive_file("UPPER.RAR") is True
     assert is_archive_file("comic.cbr") is True
     assert is_archive_file("archive.cbz") is True
+    assert is_archive_file("STATE-WINS.PK [] DISCREETGENT.7z.001") is True
+    assert is_archive_file("package.part1.rar") is True
+    assert is_archive_file("data.001") is True
+    assert is_archive_file("video.mp4") is False
 
 
 def test_rarfile_tool_configuration():

@@ -94,8 +94,11 @@ async def handle_incoming_media(client: Client, message: Message):
         # Check against Telegram 2 GB non-premium protocol limit
         if file_size > 2097152000:
             await message.reply_text(
-                "⚠️ <b>File Exceeds Telegram Limit (2 GB):</b>\n"
-                "Telegram does not allow bots to process files larger than 2 GB."
+                "⚠️ <b>Video Exceeds Telegram Limit (2 GB):</b>\n\n"
+                f"• <b>File:</b> <code>{file_name}</code>\n"
+                f"• <b>Size:</b> <b>{format_bytes(file_size)}</b>\n\n"
+                "Telegram only permits non-premium bots to process files up to <b>2.00 GB</b>.\n"
+                "Files uploaded via Telegram Premium (up to 4 GB) cannot be downloaded by standard bots."
             )
             return
 
@@ -109,15 +112,18 @@ async def handle_incoming_media(client: Client, message: Message):
         if not is_archive_file(file_name):
             await message.reply_text(
                 "📦 <b>Unzipper Active:</b>\n"
-                "Please send a valid archive file (.zip, .rar, .7z, .tar, .gz).\n"
+                "Please send a valid archive file (.zip, .rar, .7z, .tar, .gz, .cbr, or split parts like .001).\n"
                 "<i>Switch modes with /mode if you intended to convert or zip.</i>"
             )
             return
 
         if file_size > 2097152000:
             await message.reply_text(
-                "⚠️ <b>Archive Exceeds Telegram Limit (2 GB):</b>\n"
-                "Telegram does not allow bots to process files larger than 2 GB."
+                "⚠️ <b>Archive Exceeds Telegram Limit (2 GB):</b>\n\n"
+                f"• <b>File:</b> <code>{file_name}</code>\n"
+                f"• <b>Size:</b> <b>{format_bytes(file_size)}</b>\n\n"
+                "Telegram only permits non-premium bots to process files up to <b>2.00 GB</b>.\n"
+                "This file was uploaded using Telegram Premium (up to 4 GB) and cannot be downloaded by standard bots."
             )
             return
 

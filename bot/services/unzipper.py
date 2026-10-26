@@ -27,6 +27,8 @@ class PasswordRequiredError(Exception):
     pass
 
 
+import re
+
 SUPPORTED_ARCHIVE_EXTENSIONS = {
     ".zip", ".rar", ".7z", ".tar", ".gz",
     ".tgz", ".tar.gz", ".tar.bz2", ".tbz2",
@@ -34,16 +36,30 @@ SUPPORTED_ARCHIVE_EXTENSIONS = {
     ".cbr", ".cbz",
 }
 
+# Regex to detect multi-part/split archives (.7z.001, .zip.001, .part1.rar, .r00, .001, etc.)
+MULTIPART_ARCHIVE_PATTERN = re.compile(
+    r"(\.(7z|zip|rar)\.\d{3}$|\.part\d+\.rar$|\.r\d{2}$|\.z\d{2}$|\.\d{3}$)",
+    re.IGNORECASE,
+)
+
 TG_MAX_FILE_SIZE = 2097152000  # 2 GB Telegram ceiling
 
 
 def is_archive_file(filename: str) -> bool:
-    """Check if filename matches known archive formats."""
+    """Check if filename matches known archive formats or split archive parts."""
     lower = filename.lower()
     for ext in SUPPORTED_ARCHIVE_EXTENSIONS:
         if lower.endswith(ext):
             return True
+    if MULTIPART_ARCHIVE_PATTERN.search(lower):
+        return True
     return False
+
+
+def is_multipart_archive(filename: str) -> bool:
+    """Check if the filename indicates a split or multi-volume archive part."""
+    lower = filename.lower()
+    return bool(MULTIPART_ARCHIVE_PATTERN.search(lower))
 
 
 def configure_rarfile_tool():
@@ -379,7 +395,7 @@ async def extract_archive_7z(
     reporter.set_phase("Extracting")
 
     # 1. RAR / CBR archives route directly to specialized multi-backend RAR extractor
-    if ext in (".rar", ".cbr"):
+    if ext in (".rar", ".cbr") or "rar" in archive_path.name.lower() or ext.startswith(".r"):
         return await extract_rar_archive(archive_path, dest_dir, password)
 
     # 2. For .7z, .zip, .tar, .gz: Attempt 7z / 7zz CLI first if available
