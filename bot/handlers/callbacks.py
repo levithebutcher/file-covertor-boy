@@ -148,23 +148,63 @@ async def handle_zip_finish(client: Client, callback: CallbackQuery):
     await run_zip_package_and_upload(client, callback.message.chat.id, user_id, callback.message)
 
 
-@Client.on_message(filters.command(["finish", "done", "makezip", "createzip"]) & filters.private)
-async def handle_cmd_finish_zip(client: Client, message: Message):
-    """Slash command shortcut to trigger zip bundling without button."""
-    user_id = message.from_user.id
-    count, _, _ = get_staging_stats(user_id)
+from bot.services.unzipper import clear_unzip_staging, get_unzip_staging_info
+from bot.handlers.media import run_unzip_split_extract_and_upload, active_unzip_cards
+
+
+@Client.on_callback_query(filters.regex(r"^unzip_split_clear$"))
+async def handle_unzip_split_clear(client: Client, callback: CallbackQuery):
+    user_id = callback.from_user.id
+    clear_unzip_staging(user_id)
+    active_unzip_cards.pop(user_id, None)
+    await callback.answer("Staged split parts cleared.", show_alert=False)
+    await callback.message.edit_text("🗑️ <b>Split archive staging cleared.</b>")
+
+
+@Client.on_callback_query(filters.regex(r"^unzip_split_finish$"))
+async def handle_unzip_split_finish(client: Client, callback: CallbackQuery):
+    user_id = callback.from_user.id
+    count, _, _ = get_unzip_staging_info(user_id)
     if count == 0:
-        await message.reply_text("⚠️ <b>No files in staging!</b>\nSend some files or photos first in Zipper mode (/zip).")
+        await callback.answer("No split parts in staging! Send parts first.", show_alert=True)
         return
 
-    status_msg = await message.reply_text("🗜️ <i>Starting zip archive creation...</i>")
-    await run_zip_package_and_upload(client, message.chat.id, user_id, status_msg)
+    await callback.answer("Unpacking all split parts...", show_alert=False)
+    await run_unzip_split_extract_and_upload(client, callback.message.chat.id, user_id, callback.message)
 
 
-@Client.on_message(filters.command(["clear", "clearzip"]) & filters.private)
+@Client.on_message(filters.command(["finish", "done", "makezip", "createzip", "extractnow"]) & filters.private)
+async def handle_cmd_finish_zip(client: Client, message: Message):
+    """Slash command shortcut to trigger zip bundling or split archive extraction."""
+    user_id = message.from_user.id
+
+    # Check split unzip staging first
+    unzip_count, _, _ = get_unzip_staging_info(user_id)
+    if unzip_count > 0:
+        status_msg = await message.reply_text("🧩 <i>Extracting staged split archive parts...</i>")
+        await run_unzip_split_extract_and_upload(client, message.chat.id, user_id, status_msg)
+        return
+
+    # Check zipper staging
+    count, _, _ = get_staging_stats(user_id)
+    if count > 0:
+        status_msg = await message.reply_text("🗜️ <i>Starting zip archive creation...</i>")
+        await run_zip_package_and_upload(client, message.chat.id, user_id, status_msg)
+        return
+
+    await message.reply_text(
+        "⚠️ <b>No active staging queue found!</b>\n"
+        "• Send files in Zipper mode to bundle into .zip\n"
+        "• Or send multi-part archive volumes (.001, .part1.rar) to unpack split archives."
+    )
+
+
+@Client.on_message(filters.command(["clear", "clearzip", "clearparts"]) & filters.private)
 async def handle_cmd_clear_zip(client: Client, message: Message):
-    """Slash command to clear staged zip files."""
+    """Slash command to clear staged zip files or split parts."""
     user_id = message.from_user.id
     clear_staging(user_id)
+    clear_unzip_staging(user_id)
     active_zipper_cards.pop(user_id, None)
-    await message.reply_text("🗑️ <b>Zip batch staging cleared.</b>")
+    active_unzip_cards.pop(user_id, None)
+    await message.reply_text("🗑️ <b>All staging queues cleared.</b>")

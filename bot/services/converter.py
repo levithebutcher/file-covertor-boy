@@ -116,6 +116,7 @@ async def convert_to_mp4(
         ]
     else:
         # Non-H.264 containers (e.g. WebM VP8/VP9/AV1, AVI, MKV, WMV)
+        # Optimized for Google Colab multi-core CPU with fast encoding and crystal-clear quality
         logger.info(
             "Transcoding %s (vcodec: %s, acodec: %s, height: %s, has_audio: %s) to H.264 MP4",
             input_file.name, vcodec, acodec, height, has_audio
@@ -126,13 +127,12 @@ async def convert_to_mp4(
                 "-i", str(input_file.resolve()),
                 "-map", "0:v:0", "-map", "0:a:0?",
                 "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-tune", "fastdecode",
-                "-crf", "28",
-                "-threads", "2",
+                "-preset", "veryfast",
+                "-crf", "23",
+                "-threads", "0",
             ]
-            if height > 720:
-                cmd.extend(["-vf", "scale=-2:720:flags=fast_bilinear"])
+            if height > 1080:
+                cmd.extend(["-vf", "scale=-2:1080:flags=fast_bilinear"])
             cmd.extend(["-pix_fmt", "yuv420p"])
 
             if acodec in ("aac", "mp3"):
@@ -154,13 +154,12 @@ async def convert_to_mp4(
                 "-map", "0:v:0", "-map", "1:a:0",
                 "-shortest",
                 "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-tune", "fastdecode",
-                "-crf", "28",
-                "-threads", "2",
+                "-preset", "veryfast",
+                "-crf", "23",
+                "-threads", "0",
             ]
-            if height > 720:
-                cmd.extend(["-vf", "scale=-2:720:flags=fast_bilinear"])
+            if height > 1080:
+                cmd.extend(["-vf", "scale=-2:1080:flags=fast_bilinear"])
             cmd.extend([
                 "-pix_fmt", "yuv420p",
                 "-c:a", "aac",

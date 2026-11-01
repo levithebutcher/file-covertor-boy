@@ -68,6 +68,28 @@ def test_rar_extension_support():
     assert is_archive_file("video.mp4") is False
 
 
+def test_multipart_archive_detection_and_primary_volume():
+    from bot.services.unzipper import is_multipart_archive, find_primary_archive_volume
+
+    assert is_multipart_archive("movie.7z.001") is True
+    assert is_multipart_archive("movie.7z.002") is True
+    assert is_multipart_archive("package.part1.rar") is True
+    assert is_multipart_archive("package.part2.rar") is True
+    assert is_multipart_archive("file.r00") is True
+    assert is_multipart_archive("normal.7z") is False
+    assert is_multipart_archive("normal.zip") is False
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        (tmp_path / "archive.7z.002").write_text("part 2")
+        (tmp_path / "archive.7z.001").write_text("part 1")
+        (tmp_path / "archive.7z.003").write_text("part 3")
+
+        primary = find_primary_archive_volume(tmp_path)
+        assert primary is not None
+        assert primary.name == "archive.7z.001"
+
+
 def test_rarfile_tool_configuration():
     from bot.services.unzipper import configure_rarfile_tool
     import rarfile

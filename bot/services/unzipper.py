@@ -5,18 +5,21 @@ detects files > 2 GB, and uploads contents sequentially with rate limiting.
 """
 
 import os
+import re
 import shutil
 import asyncio
 import logging
 import zipfile
 import tarfile
+import urllib.parse
 from pathlib import Path
 from typing import List, Tuple, Dict, Any, Optional
 
+import aiohttp
 import py7zr
 import rarfile
 from bot.utils.progress import ProgressReporter
-from bot.utils.file_ops import is_safe_path, format_bytes
+from bot.utils.file_ops import is_safe_path, format_bytes, sanitize_filename, safe_remove_dir
 from bot.services.queue import queue_manager
 
 logger = logging.getLogger(__name__)
@@ -25,9 +28,6 @@ logger = logging.getLogger(__name__)
 class PasswordRequiredError(Exception):
     """Raised when an archive requires a password for extraction."""
     pass
-
-
-import re
 
 SUPPORTED_ARCHIVE_EXTENSIONS = {
     ".zip", ".rar", ".7z", ".tar", ".gz",
@@ -60,6 +60,195 @@ def is_multipart_archive(filename: str) -> bool:
     """Check if the filename indicates a split or multi-volume archive part."""
     lower = filename.lower()
     return bool(MULTIPART_ARCHIVE_PATTERN.search(lower))
+
+
+# Staging directory for multi-part / split archives (.001, .002, .part1.rar, etc.)
+UNZIP_STAGING_BASE = Path("temp/unzip_staging")
+
+
+def get_unzip_staging_dir(user_id: int) -> Path:
+    """Return the active staging directory for a user's multi-part archive parts."""
+    staging_dir = UNZIP_STAGING_BASE / str(user_id)
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    return staging_dir
+
+
+def get_unzip_staging_info(user_id: int) -> Tuple[int, int, List[Tuple[str, int]]]:
+    """Return (count, total_size_bytes, [(filename, file_size), ...])."""
+    staging_dir = get_unzip_staging_dir(user_id)
+    files = sorted([f for f in staging_dir.iterdir() if f.is_file()], key=lambda f: f.name)
+    total_size = sum(f.stat().st_size for f in files)
+    file_info = [(f.name, f.stat().st_size) for f in files]
+    return len(files), total_size, file_info
+
+
+def clear_unzip_staging(user_id: int) -> None:
+    """Clear all staged split archive parts for a user."""
+    staging_dir = get_unzip_staging_dir(user_id)
+    safe_remove_dir(staging_dir)
+
+
+async def add_split_part_to_staging(
+    user_id: int,
+    source_file: Path,
+    original_filename: str,
+) -> Tuple[int, int, List[Tuple[str, int]]]:
+    """Move a split archive volume into user's split staging directory."""
+    staging_dir = get_unzip_staging_dir(user_id)
+    clean_name = sanitize_filename(original_filename)
+    dest_path = staging_dir / clean_name
+    if dest_path.exists():
+        dest_path.unlink()
+    shutil.move(str(source_file), str(dest_path))
+    return get_unzip_staging_info(user_id)
+
+
+def find_primary_archive_volume(staging_dir: Path) -> Optional[Path]:
+    """Find the root or initial volume of a split archive set."""
+    files = sorted([f for f in staging_dir.iterdir() if f.is_file()], key=lambda f: f.name)
+    if not files:
+        return None
+
+    # 1. Look for .001 or .part1.rar or .part01.rar
+    for f in files:
+        name_lower = f.name.lower()
+        if (
+            name_lower.endswith(".001")
+            or ".part01.rar" in name_lower
+            or ".part1.rar" in name_lower
+            or ".part001.rar" in name_lower
+            or name_lower.endswith(".part1")
+        ):
+            return f
+
+    # 2. Look for root .rar file in old-style RAR sets (.rar, .r00, .r01, ...)
+    for f in files:
+        if f.suffix.lower() == ".rar":
+            return f
+
+    # 3. Default to first file alphabetically
+    return files[0]
+
+
+async def split_large_file(
+    file_path: Path,
+    output_dir: Path,
+    volume_mb: int = 1900,
+) -> List[Path]:
+    """
+    Splits an oversized file (> 2 GB) into multi-volume zip archives (.zip.001, .zip.002, ...)
+    using 7-Zip store mode (-mx=0) for near-instant execution without recompression.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    base_name = file_path.name
+    out_archive = output_dir / f"{base_name}.zip"
+
+    seven_bin = shutil.which("7z") or shutil.which("7zz")
+    if seven_bin:
+        cmd = [
+            seven_bin, "a",
+            "-tzip",
+            "-mx=0",
+            f"-v{volume_mb}m",
+            str(out_archive.resolve()),
+            str(file_path.resolve()),
+        ]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            if proc.returncode == 0:
+                parts = sorted(output_dir.glob(f"{base_name}.zip.*"))
+                if parts:
+                    return parts
+                if out_archive.exists():
+                    return [out_archive]
+        except Exception as e:
+            logger.error("Error splitting large file with 7z: %s", e)
+
+    return []
+
+
+async def download_url_archive(
+    url: str,
+    dest_dir: Path,
+    task_id: str,
+    reporter: ProgressReporter,
+) -> Tuple[bool, Optional[Path], str]:
+    """
+    Download an archive directly from a public HTTP/HTTPS URL with streaming progress.
+    Bypasses Telegram 2 GB file limits on high-bandwidth environments like Colab.
+    Returns (success, downloaded_file_path, filename).
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    reporter.set_phase("Downloading")
+
+    timeout = aiohttp.ClientTimeout(total=7200, sock_read=180)
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+    }
+
+    try:
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+            async with session.get(url, allow_redirects=True) as resp:
+                if resp.status not in (200, 206):
+                    logger.error("URL download returned HTTP %d for %s", resp.status, url)
+                    return False, None, f"HTTP Error {resp.status}"
+
+                # Extract filename from Content-Disposition header if present
+                content_disposition = resp.headers.get("Content-Disposition", "")
+                filename = ""
+                if content_disposition:
+                    matches = re.findall(
+                        r"filename\*?=['\"]?(?:UTF-\d['\"])?([^;\r\n\"']*)['\"]?",
+                        content_disposition,
+                        flags=re.I,
+                    )
+                    if matches:
+                        filename = matches[0].strip()
+
+                if not filename:
+                    parsed_url = urllib.parse.urlparse(str(resp.url))
+                    url_path = urllib.parse.unquote(parsed_url.path)
+                    filename = os.path.basename(url_path)
+
+                if not filename or filename == "/":
+                    filename = f"archive_{task_id}.zip"
+
+                filename = sanitize_filename(filename)
+                total_bytes = resp.content_length or 0
+                reporter.total_bytes = total_bytes
+                reporter.task_name = filename
+
+                dest_file = dest_dir / filename
+                downloaded = 0
+                chunk_size = 1024 * 1024  # 1 MB stream buffer
+
+                with open(dest_file, "wb") as f:
+                    async for chunk in resp.content.iter_chunked(chunk_size):
+                        if reporter.is_cancelled:
+                            dest_file.unlink(missing_ok=True)
+                            return False, None, "Cancelled"
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        await reporter.update(downloaded, total_bytes=total_bytes)
+
+                if dest_file.exists() and dest_file.stat().st_size > 0:
+                    return True, dest_file, filename
+
+    except asyncio.CancelledError:
+        return False, None, "Cancelled"
+    except Exception as e:
+        logger.error("URL download failed for %s: %s", url, e)
+        return False, None, str(e)
+
+    return False, None, "Unknown download failure"
 
 
 def configure_rarfile_tool():

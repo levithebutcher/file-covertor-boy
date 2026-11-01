@@ -17,8 +17,12 @@ from bot.database.users import is_whitelisted, get_user_mode
 from bot.templates.cards import (
     access_denied_card,
     zipper_staging_card,
+    unzip_split_staging_card,
 )
-from bot.templates.buttons import zipper_actions_keyboard
+from bot.templates.buttons import (
+    zipper_actions_keyboard,
+    unzip_staging_actions_keyboard,
+)
 from bot.utils.file_ops import (
     sanitize_filename,
     has_enough_free_space,
@@ -31,9 +35,16 @@ from bot.services.queue import queue_manager
 from bot.services.converter import is_video_file, convert_to_mp4
 from bot.services.unzipper import (
     is_archive_file,
+    is_multipart_archive,
     extract_archive_7z,
     get_and_validate_extracted_files,
     PasswordRequiredError,
+    add_split_part_to_staging,
+    get_unzip_staging_info,
+    clear_unzip_staging,
+    find_primary_archive_volume,
+    split_large_file,
+    download_url_archive,
 )
 from bot.services.zipper import add_file_to_staging, get_staging_files_info
 
@@ -48,6 +59,7 @@ pending_password_archives: dict[int, dict] = {}
 # Zipper staging coordination: lock per user & single active status card
 user_staging_locks: dict[int, asyncio.Lock] = {}
 active_zipper_cards: dict[int, Message] = {}
+active_unzip_cards: dict[int, Message] = {}
 
 
 @Client.on_message((filters.video | filters.document | filters.photo | filters.audio) & filters.private)
@@ -112,7 +124,7 @@ async def handle_incoming_media(client: Client, message: Message):
         if not is_archive_file(file_name):
             await message.reply_text(
                 "📦 <b>Unzipper Active:</b>\n"
-                "Please send a valid archive file (.zip, .rar, .7z, .tar, .gz, .cbr, or split parts like .001).\n"
+                "Please send a valid archive file (.zip, .rar, .7z, .tar, .gz, .cbr, or split parts like .001) or a direct URL link.\n"
                 "<i>Switch modes with /mode if you intended to convert or zip.</i>"
             )
             return
@@ -123,8 +135,13 @@ async def handle_incoming_media(client: Client, message: Message):
                 f"• <b>File:</b> <code>{file_name}</code>\n"
                 f"• <b>Size:</b> <b>{format_bytes(file_size)}</b>\n\n"
                 "Telegram only permits non-premium bots to process files up to <b>2.00 GB</b>.\n"
-                "This file was uploaded using Telegram Premium (up to 4 GB) and cannot be downloaded by standard bots."
+                "💡 <i>Tip: If this file is hosted online, send its direct download link (URL) and the bot will stream-download and extract it directly on Colab!</i>"
             )
+            return
+
+        # Check if file is a multi-part split volume (.001, .002, .part1.rar, etc.)
+        if is_multipart_archive(file_name):
+            await handle_split_archive_upload(client, message, file_name, file_size)
             return
 
         await process_unzip_locally(client, message, file_name, file_size)
@@ -273,16 +290,36 @@ async def deliver_extracted_contents(
         await status_msg.edit_text("⚠️ <b>Archive was empty or contained no valid files.</b>")
         return
 
-    # Inform user if files were skipped due to 2 GB limit
+    # Auto-split and deliver oversized files (> 2 GB) into 1.9 GB zip volumes so no files are lost
+    split_parts_to_send: List[Path] = []
     if oversized:
-        oversized_lines = [f"• <code>{f}</code> ({format_bytes(s)})" for f, s in oversized]
-        await client.send_message(
-            chat_id=message.chat.id,
-            text=(
-                "⚠️ <b>The following extracted files exceed the Telegram 2 GB limit and were skipped:</b>\n"
-                + "\n".join(oversized_lines)
-            ),
-        )
+        try:
+            await client.send_message(
+                chat_id=message.chat.id,
+                text=(
+                    f"🗜️ <b>Large File Detected ({len(oversized)} item{'s' if len(oversized) > 1 else ''} > 2 GB):</b>\n"
+                    "Auto-splitting into 1.9 GB zip volumes so you can download them on Telegram without data loss..."
+                ),
+            )
+            split_dir = extract_dest.parent / "split_oversized"
+            split_dir.mkdir(parents=True, exist_ok=True)
+            for fname, fsize in oversized:
+                target_path = None
+                for root, _, files in os.walk(extract_dest):
+                    if fname in files:
+                        target_path = Path(root) / fname
+                        break
+                if target_path and target_path.exists():
+                    parts = await split_large_file(target_path, split_dir, volume_mb=1900)
+                    if parts:
+                        split_parts_to_send.extend(parts)
+                    else:
+                        await client.send_message(
+                            chat_id=message.chat.id,
+                            text=f"⚠️ Failed to auto-split <code>{fname}</code> ({format_bytes(fsize)}).",
+                        )
+        except Exception as e:
+            logger.error("Error during oversized file auto-split: %s", e)
 
     # Separate media files (for albums) and document files
     media_files = [f for f in valid_files if f.suffix.lower() in (PHOTO_EXTENSIONS | VIDEO_EXTENSIONS)]
@@ -333,8 +370,8 @@ async def deliver_extracted_contents(
             logger.warning("Album upload failed for chunk %d, falling back to document upload: %s", idx, e)
             fallback_doc_files.extend(chunk)
 
-    # 2. Deliver non-media document files (plus any media files that failed album delivery)
-    all_doc_files = doc_files + fallback_doc_files
+    # 2. Deliver non-media document files (plus any media files that failed album delivery and split parts)
+    all_doc_files = doc_files + fallback_doc_files + split_parts_to_send
     total_docs = len(all_doc_files)
     delivered_doc_count = 0
 
@@ -511,6 +548,190 @@ async def process_unzip_locally(client: Client, message: Message, file_name: str
             await status_msg.edit_text(f"⚠️ <b>Extraction error:</b> <code>{e}</code>")
     finally:
         # If awaiting password, do not purge task_dir yet
+        if user_id not in pending_password_archives:
+            await queue_manager.unregister_task(task_id)
+            safe_remove_dir(task_dir)
+
+
+async def handle_split_archive_upload(client: Client, message: Message, file_name: str, file_size: int):
+    """Downloads a multi-part split volume (.001, .002, .part1.rar, etc.) and stages it for batch extraction."""
+    user_id = message.from_user.id
+    task_id = str(uuid.uuid4())[:8]
+    task_dir = get_task_dir(user_id, task_id)
+    status_msg = await message.reply_text(f"📥 <i>Downloading split part <code>{file_name}</code>...</i>")
+
+    reporter = ProgressReporter(
+        status_message=status_msg,
+        task_name=file_name,
+        task_id=task_id,
+        phase="Downloading",
+        total_bytes=file_size,
+    )
+    await queue_manager.register_task(task_id, user_id, reporter)
+
+    try:
+        download_dest = task_dir / file_name
+        downloaded_res = await client.download_media(
+            message=message,
+            file_name=str(download_dest.resolve()),
+            progress=reporter.pyrogram_callback,
+        )
+
+        actual_file = Path(downloaded_res) if downloaded_res else download_dest
+        if not actual_file.exists():
+            raise FileNotFoundError(f"Failed to save staged split part: {download_dest}")
+
+        count, total_staged, file_info = await add_split_part_to_staging(
+            user_id=user_id,
+            source_file=actual_file,
+            filename=file_name,
+        )
+
+        old_card = active_unzip_cards.get(user_id)
+        if old_card:
+            try:
+                await old_card.delete()
+            except Exception:
+                pass
+
+        card_text = unzip_split_staging_card(count, total_staged, file_info)
+        new_card = await status_msg.edit_text(
+            text=card_text,
+            reply_markup=unzip_staging_actions_keyboard(count),
+        )
+        active_unzip_cards[user_id] = new_card
+
+    except Exception as e:
+        logger.error("Failed to stage split archive part: %s", e)
+        await status_msg.edit_text(f"⚠️ <b>Failed to stage split part:</b> <code>{e}</code>")
+    finally:
+        await queue_manager.unregister_task(task_id)
+        safe_remove_dir(task_dir)
+
+
+async def run_unzip_split_extract_and_upload(client: Client, chat_id: int, user_id: int, status_msg: Message):
+    """Gathers all staged split archive parts in user's staging dir, extracts the primary volume, and delivers files."""
+    staging_dir = Path("temp/unzip_staging") / str(user_id)
+    count, total_staged, file_info = get_unzip_staging_info(user_id)
+    if count == 0:
+        await status_msg.edit_text("⚠️ <b>No split parts staged!</b> Please send the split files first.")
+        return
+
+    primary_vol = find_primary_archive_volume(staging_dir)
+    if not primary_vol:
+        await status_msg.edit_text("⚠️ <b>Could not identify root archive volume (e.g. .001 or .part1.rar).</b>")
+        return
+
+    task_id = str(uuid.uuid4())[:8]
+    reporter = ProgressReporter(
+        status_message=status_msg,
+        task_name=primary_vol.name,
+        task_id=task_id,
+        phase="Extracting",
+        total_bytes=total_staged,
+    )
+    await queue_manager.register_task(task_id, user_id, reporter)
+
+    extract_dest = staging_dir / "extracted"
+    extract_dest.mkdir(parents=True, exist_ok=True)
+
+    try:
+        await status_msg.edit_text(f"🧩 <i>Gathering {count} parts and unpacking split archive...</i>")
+        async with queue_manager.acquire_slot():
+            success = await extract_archive_7z(
+                archive_path=primary_vol,
+                dest_dir=extract_dest,
+                task_id=task_id,
+                reporter=reporter,
+            )
+
+            if not success:
+                await status_msg.edit_text("⚠️ <b>Split archive extraction failed. Make sure all parts are uploaded!</b>")
+                return
+
+            # Deliver files in albums, documents, and auto-split oversized files > 2GB
+            await deliver_extracted_contents(client, status_msg, extract_dest, status_msg, reporter)
+
+    except Exception as e:
+        logger.error("Error extracting staged split archive: %s", e)
+        await status_msg.edit_text(f"⚠️ <b>Split extraction error:</b> <code>{e}</code>")
+    finally:
+        await queue_manager.unregister_task(task_id)
+        clear_unzip_staging(user_id)
+        active_unzip_cards.pop(user_id, None)
+
+
+async def process_url_unzip_locally(client: Client, message: Message, url: str):
+    """Downloads an archive directly from a public URL and extracts it."""
+    user_id = message.from_user.id
+    task_id = str(uuid.uuid4())[:8]
+    task_dir = get_task_dir(user_id, task_id)
+
+    status_msg = await message.reply_text("🌐 <i>Connecting to URL and inspecting archive...</i>")
+    reporter = ProgressReporter(
+        status_message=status_msg,
+        task_name="URL Download",
+        task_id=task_id,
+        phase="Downloading",
+        total_bytes=0,
+    )
+    await queue_manager.register_task(task_id, user_id, reporter)
+
+    try:
+        async with queue_manager.acquire_slot():
+            success, dl_file, dl_filename = await download_url_archive(
+                url=url,
+                dest_dir=task_dir,
+                task_id=task_id,
+                reporter=reporter,
+            )
+
+            if not success or not dl_file or not dl_file.exists():
+                await status_msg.edit_text(f"❌ <b>Download from URL failed:</b> <code>{dl_filename}</code>")
+                return
+
+            if reporter.is_cancelled:
+                return
+
+            extract_dest = task_dir / "extracted"
+
+            try:
+                extract_ok = await extract_archive_7z(
+                    archive_path=dl_file,
+                    dest_dir=extract_dest,
+                    task_id=task_id,
+                    reporter=reporter,
+                )
+            except PasswordRequiredError:
+                pending_password_archives[user_id] = {
+                    "task_id": task_id,
+                    "task_dir": task_dir,
+                    "arch_file": dl_file,
+                    "file_name": dl_filename,
+                    "file_size": dl_file.stat().st_size,
+                    "status_msg": status_msg,
+                    "reporter": reporter,
+                }
+                await status_msg.edit_text(
+                    "🔐 <b>Password-Protected Archive Detected!</b>\n\n"
+                    f"<code>{dl_filename}</code> is protected with a password.\n\n"
+                    "👉 <b>Reply directly to this message with the password</b> to extract your files.\n"
+                    "<i>(Send /cancel to discard this archive)</i>"
+                )
+                return
+
+            if not extract_ok:
+                if not reporter.is_cancelled:
+                    await status_msg.edit_text("⚠️ <b>Extraction failed or archive format unsupported.</b>")
+                return
+
+            await deliver_extracted_contents(client, message, extract_dest, status_msg, reporter)
+
+    except Exception as e:
+        logger.error("Error in process_url_unzip_locally: %s", e)
+        if not reporter.is_cancelled:
+            await status_msg.edit_text(f"⚠️ <b>URL Extraction error:</b> <code>{e}</code>")
+    finally:
         if user_id not in pending_password_archives:
             await queue_manager.unregister_task(task_id)
             safe_remove_dir(task_dir)

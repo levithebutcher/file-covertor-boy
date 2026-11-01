@@ -33,7 +33,43 @@ async def handle_chat_text(client: Client, message: Message):
 
     text_clean = message.text.strip().lower()
 
-    # Check for natural conversational zip triggers (e.g. "create zip", "zip banao", "abb zip create karo", "done", "finish")
+    # 1. Check for HTTP/HTTPS URL links
+    url_match = re.search(r"https?://[^\s]+", message.text)
+    if url_match:
+        url = url_match.group(0).strip()
+        mode = await get_user_mode(user_id)
+        if mode == "unzip" or any(url.lower().endswith(ext) for ext in (".zip", ".rar", ".7z", ".tar", ".gz", ".tar.gz", ".cbr")):
+            from bot.handlers.media import process_url_unzip_locally
+            await process_url_unzip_locally(client, message, url)
+            return
+        else:
+            await message.reply_text(
+                "🌐 <b>Archive URL Link Detected:</b>\n"
+                f"<code>{url}</code>\n\n"
+                "👉 Switch to <b>Unzipper Mode</b> using /unzip (or /mode) to stream-download and unpack archives from web links!"
+            )
+            return
+
+    # 2. Check for Split Archive extraction triggers
+    is_unzip_phrase = (
+        text_clean in ("extract", "unzip", "merge", "extract all", "unpack")
+        or any(phrase in text_clean for phrase in (
+            "extract now", "unzip now", "extract all", "unzip all",
+            "merge parts", "merge all", "start extract", "kholo", "unpack all"
+        ))
+    )
+    if is_unzip_phrase:
+        from bot.services.unzipper import get_unzip_staging_info
+        from bot.handlers.media import run_unzip_split_extract_and_upload
+        unzip_count, _, _ = get_unzip_staging_info(user_id)
+        if unzip_count > 0:
+            status_msg = await message.reply_text(
+                f"🧩 <i>Command received! Unpacking all {unzip_count} split archive parts...</i>"
+            )
+            await run_unzip_split_extract_and_upload(client, message.chat.id, user_id, status_msg)
+            return
+
+    # 3. Check for natural conversational zip triggers (e.g. "create zip", "zip banao", "abb zip create karo", "done", "finish")
     is_zip_phrase = (
         text_clean in ("zip", "done", "finish", "compress", "package")
         or any(phrase in text_clean for phrase in (

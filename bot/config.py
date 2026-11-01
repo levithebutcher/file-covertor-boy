@@ -24,9 +24,9 @@ class Settings(BaseSettings):
     owner_id: Optional[int] = Field(default=8942914752, alias="OWNER_ID")
     admin_ids_raw: Optional[str] = Field(default="8942914752", alias="ADMIN_IDS")
 
-    # Web Server & Concurrency
+    # Web Server & Concurrency (Optimized for Colab high RAM & CPU)
     port: int = Field(default=10000, alias="PORT")
-    max_concurrent_jobs: int = Field(default=1, alias="MAX_CONCURRENT_JOBS")
+    max_concurrent_jobs: int = Field(default=3, alias="MAX_CONCURRENT_JOBS")
 
     # Computed fields
     @property

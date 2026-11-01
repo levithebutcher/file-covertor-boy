@@ -174,3 +174,29 @@ def zipper_staging_card(
         "<b>'Create .ZIP Now'</b> (or type <i>create zip</i>) to bundle all files into one .zip!",
     ])
     return "\n".join(lines)
+
+
+def unzip_split_staging_card(
+    file_count: int,
+    total_size: int,
+    file_list: list[tuple[str, int]],
+) -> str:
+    """Status card for staged split archive parts (.001, .part1.rar, etc.)."""
+    size_str = format_bytes(total_size)
+    lines = [
+        "📦 <b>SPLIT ARCHIVE COLLECTOR ACTIVE</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"🧩 <b>Staged Volumes ({file_count} part{'s' if file_count != 1 else ''}):</b>",
+    ]
+    for idx, (fname, fsize) in enumerate(file_list[:8], 1):
+        lines.append(f"<b>{idx}.</b> <code>{fname}</code> ({format_bytes(fsize)})")
+    if len(file_list) > 8:
+        lines.append(f"<i>... and {len(file_list) - 8} more part(s)</i>")
+    lines.extend([
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"📊 <b>Total Downloaded Size:</b> <code>{size_str}</code>",
+        "",
+        "👉 Send all remaining parts of this archive, then tap",
+        "<b>'🚀 Extract All Parts Now'</b> (or send <i>/done</i> or <i>extract now</i>)!",
+    ])
+    return "\n".join(lines)

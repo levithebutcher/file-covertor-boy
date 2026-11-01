@@ -8,10 +8,14 @@
 
 ## 1. Project Goal & Overview
 
-Telegram Media Suite is a high-performance, asynchronous Telegram bot built with Python 3.11+ and Hydrogram (MTProto). It provides three core media services up to Telegram's 2 GB non-premium limit:
+Telegram Media Suite is a high-performance, asynchronous Telegram bot built with Python 3.11+ and Hydrogram (MTProto), specialized for Google Colab high-bandwidth & multi-core execution:
 
-1. **🎬 Video Converter (Top Priority):** Converts all popular video containers (`.mkv`, `.avi`, `.mov`, `.webm`, `.flv`, `.wmv`, `.ts`, etc.) into streamable, web-optimized `.mp4` (H.264/AAC) using asynchronous FFmpeg subprocesses with real-time stdout progress parsing and instant cancellation.
-2. **📦 Unzipper (Top Priority):** Extracts `.zip`, `.rar`, `.7z`, `.tar`, `.gz`, `.tgz`, `.tar.bz2`, `.cbr`, `.cbz` archives using a resilient multi-backend extraction pipeline (`7z`, dedicated `unrar`, `unar`, `bsdtar`/`tar`, and `rarfile`/`py7zr`), delivers photos/videos in standardized Telegram albums, handles password protection, and uploads valid files sequentially with flood throttling.
+1. **🎬 Best-in-Class Video Converter:** Converts all popular video containers (`.mkv`, `.avi`, `.mov`, `.webm`, `.flv`, `.wmv`, `.ts`, etc.) into streamable, web-optimized `.mp4` (H.264/AAC) using multi-threaded FFmpeg subprocesses (`-threads 0`, `-preset veryfast`, `-crf 23`, 1080p preserve, silent AAC synthesis for player controls, and instant direct stream copy when input is already H.264/AAC).
+2. **📦 Unzipper with URL & Split Archive Engine:**
+   - **Direct URL Unzip:** Downloads and unpacks archives directly from web links (`https://...`), bypassing Telegram 2 GB download restrictions on Google Colab.
+   - **Split Archive Collector (`/merge`):** Stages multi-part archive volumes (`.001`, `.002`, `.part1.rar`, etc.) and unpacks the entire volume set seamlessly.
+   - **Auto-Split Extracted Files > 2 GB:** If an extracted file exceeds 2 GB, automatically splits it into 1.9 GB zip pieces so users never lose large files.
+   - **Multi-backend Extraction Pipeline:** Resilient extraction chain (`7z`, `unar`, `unrar`, `bsdtar/tar`, `py7zr`, `rarfile`) delivering photos/videos in native Telegram albums with clean document fallback.
 3. **🗜️ Zipper (Multi-File Bundler):** Staged collector allowing users to send multiple files, visualize batch counts in real time, and trigger compression into `.zip`. Automatically splits archives into multi-part volumes if total size exceeds 2 GB.
 4. **🎭 Casual Text Humor:** Non-veg / adult humor auto-replies to random conversational messages ("hi", "hlw", etc.).
 

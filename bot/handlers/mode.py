@@ -65,7 +65,39 @@ async def handle_shortcut_unzip(client: Client, message: Message):
         return
 
     await set_user_mode(user_id, "unzip")
-    await message.reply_text("📦 <b>Switched to Unzipper Mode!</b>\nSend any archive (.zip, .rar, .7z, .tar, .gz) to extract.")
+    await message.reply_text(
+        "📦 <b>Switched to Unzipper Mode!</b>\n"
+        "• Send any archive (.zip, .rar, .7z, .tar, .gz, .cbr) to extract.\n"
+        "• Send direct public web links (URLs) to extract without Telegram file limits.\n"
+        "• Send multi-part split volumes (.001, .part1.rar) to gather and unpack together!"
+    )
+
+
+from bot.services.unzipper import get_unzip_staging_info
+from bot.templates.cards import unzip_split_staging_card
+from bot.templates.buttons import unzip_staging_actions_keyboard
+
+
+@Client.on_message(filters.command(["merge", "parts"]) & filters.private)
+async def handle_cmd_merge(client: Client, message: Message):
+    user_id = message.from_user.id
+    if not await is_whitelisted(user_id):
+        await message.reply_text(access_denied_card(user_id))
+        return
+
+    await set_user_mode(user_id, "unzip")
+    count, total_staged, file_info = get_unzip_staging_info(user_id)
+    if count > 0:
+        await message.reply_text(
+            text=unzip_split_staging_card(count, total_staged, file_info),
+            reply_markup=unzip_staging_actions_keyboard(count),
+        )
+    else:
+        await message.reply_text(
+            "🧩 <b>Split Archive Collector Active!</b>\n\n"
+            "• Send your multi-part archive volumes one by one (e.g. <code>.7z.001</code>, <code>.7z.002</code>, or <code>.part1.rar</code>, <code>.part2.rar</code>).\n"
+            "• When all parts are sent, tap <b>'🚀 Extract All Parts Now'</b> (or send <code>/done</code>) to unpack the complete archive!"
+        )
 
 
 @Client.on_message(filters.command("zip") & filters.private)

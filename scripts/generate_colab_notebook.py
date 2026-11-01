@@ -82,16 +82,16 @@ def generate_colab_notebook():
                     f"API_HASH = {json.dumps(api_hash)}\n",
                     f"OWNER_ID = {json.dumps(owner_id)}\n",
                     "\n",
-                    "with open(\".env\", \"w\", encoding=\"utf-8\") as f:\n",
-                    "    f.write(f\"BOT_TOKEN={BOT_TOKEN}\\n\")\n",
-                    "    f.write(f\"API_ID={API_ID}\\n\")\n",
-                    "    f.write(f\"API_HASH={API_HASH}\\n\")\n",
-                    "    f.write(f\"OWNER_ID={OWNER_ID}\\n\")\n",
-                    "    f.write(f\"ADMIN_IDS={OWNER_ID}\\n\")\n",
-                    "    f.write(\"PORT=10000\\n\")\n",
-                    "    f.write(\"MAX_CONCURRENT_JOBS=2\\n\")\n",
+                    f"with open(\".env\", \"w\", encoding=\"utf-8\") as f:\n",
+                    f"    f.write(f\"BOT_TOKEN={{BOT_TOKEN}}\\n\")\n",
+                    f"    f.write(f\"API_ID={{API_ID}}\\n\")\n",
+                    f"    f.write(f\"API_HASH={{API_HASH}}\\n\")\n",
+                    f"    f.write(f\"OWNER_ID={{OWNER_ID}}\\n\")\n",
+                    f"    f.write(f\"ADMIN_IDS={{OWNER_ID}}\\n\")\n",
+                    f"    f.write(\"PORT=10000\\n\")\n",
+                    f"    f.write(\"MAX_CONCURRENT_JOBS=3\\n\")\n",
                     "\n",
-                    "print(\"✅ Credentials and OWNER_ID configured for owner:\", OWNER_ID)"
+                    "print(\"Credentials and OWNER_ID configured for owner:\", OWNER_ID)"
                 ]
             },
             {

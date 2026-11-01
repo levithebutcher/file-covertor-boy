@@ -63,6 +63,20 @@ def zipper_actions_keyboard(file_count: int = 0) -> InlineKeyboardMarkup:
     ])
 
 
+def unzip_staging_actions_keyboard(file_count: int = 0) -> InlineKeyboardMarkup:
+    """Action buttons for Split Archive staging batches."""
+    extract_label = f"🚀 Extract All Parts ({file_count})" if file_count > 0 else "🚀 Extract All Parts Now"
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(extract_label, callback_data="unzip_split_finish"),
+            InlineKeyboardButton("🗑️ Clear Parts", callback_data="unzip_split_clear"),
+        ],
+        [
+            InlineKeyboardButton("❌ Close", callback_data="close_menu"),
+        ]
+    ])
+
+
 def close_keyboard() -> InlineKeyboardMarkup:
     """Simple close button."""
     return InlineKeyboardMarkup([
